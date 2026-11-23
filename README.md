@@ -9,11 +9,11 @@
 ![运行时](https://img.shields.io/badge/runtime-.NET%20Framework%204.8-512BD4)
 ![许可](https://img.shields.io/badge/license-MIT-4C1)
 
-> 2.0 起程序由 `ComicConverter` 改名为 `ComicManager`，新增元数据刮削；GitHub 仓库地址仍沿用旧名。
+> 2.0 起程序由 `ComicConverter` 改名为 `ComicManager`，新增元数据刮削；GitHub 仓库与 Releases 已同步改名，旧地址会自动重定向。
 
 ## 下载
 
-[Releases](https://github.com/RexLee0929/ComicConverter/releases)
+[Releases](https://github.com/RexLee0929/ComicManager/releases)
 
 | 安装包 | 适用 |
 |---|---|
@@ -349,8 +349,8 @@
 **2.0 和以前的 ComicConverter 是什么关系？**
 同一个程序。2.0 改名 ComicManager 并加入元数据刮削，1.x 的转换功能与配置项都还在。安装包里带了旧版识别，见[从 1.x 升级](#从-1x-升级)。
 
-**仓库地址为什么还叫 ComicConverter？**
-仓库没改名，程序名先改了。Releases 与 issue 都在原地址。
+**仓库地址变了吗？**
+仓库和程序一起改名成了 ComicManager，旧地址 `ComicConverter` 由 GitHub 自动重定向，已有链接不会失效。Releases 与 issue 都在新地址。
 
 **转完在 Kavita 里还是乱序？**
 先确认输出时选的目标服务器和 Kavita 实际用的排序依据一致：Kavita 只认 `Volume`。如果当时选了 Komga，文件名是 `#001`，`Volume` 未必合预期。改回「双兼容」重跑一遍即可，图片不会被重编码。
@@ -389,7 +389,7 @@ exe 没有代码签名，这是误报最常见的原因。可以先本地比对�
 
 ## 开发说明
 
-编译、版本号、图标配色、代码结构、界面离屏验证和几个踩过的坑见 [DEVELOPMENT.md](https://github.com/RexLee0929/ComicConverter/blob/main/DEVELOPMENT.md)。
+编译、版本号、图标配色、代码结构、界面离屏验证和几个踩过的坑见 [DEVELOPMENT.md](https://github.com/RexLee0929/ComicManager/blob/main/DEVELOPMENT.md)。
 
 ---
 
@@ -407,7 +407,7 @@ exe 没有代码签名，这是误报最常见的原因。可以先本地比对�
 
 ## 反馈
 
-- 遇到问题、想提需求、希望适配新的站点目录结构或刮削来源，直接 [提 issue](https://github.com/RexLee0929/ComicConverter/issues)；可附上 `error.log` 和出错的文件名。提交前请检查并脱敏日志、路径和文件名中的个人信息。
+- 遇到问题、想提需求、希望适配新的站点目录结构或刮削来源，直接 [提 issue](https://github.com/RexLee0929/ComicManager/issues)；可附上 `error.log` 和出错的文件名。提交前请检查并脱敏日志、路径和文件名中的个人信息。
 - 也可以邮件联系作者 Rex Lee：**rexlee@rexleepro.com**
 
 ## 第三方组件
