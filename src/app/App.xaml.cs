@@ -4,7 +4,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 
-namespace ComicConverter
+namespace ComicManager
 {
     public partial class App : Application
     {
@@ -63,7 +63,7 @@ namespace ComicConverter
                     h ^= c;
                     h *= 16777619;
                 }
-                _instanceKey = "Local\\ComicConverter_" + h.ToString("X8");
+                _instanceKey = "Local\\ComicManager_" + h.ToString("X8");
 
                 bool owned;
                 _mutex = new Mutex(true, _instanceKey, out owned);

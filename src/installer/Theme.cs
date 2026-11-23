@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>
     /// 配色：唯一来源是程序图标（app.ico）。

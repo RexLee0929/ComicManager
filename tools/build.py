@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ComicConverter 一键构建：主程序 → payload.zip → 安装器 → 产物进 artifacts/ → 同步源码到发布区。
+ComicManager 一键构建：主程序 → payload.zip → 安装器 → 产物进 artifacts/ → 同步源码到发布区。
 
 发布产物统一放在编辑区根的 artifacts/（浅、好找）：安装器 exe 本身就是发布产物
-（安装器设计规范 §一），发版直接从 artifacts/ 取 `ComicConverter-<版本>-setup.exe` 传 GitHub Releases。
+（安装器设计规范 §一），发版直接从 artifacts/ 取 `ComicManager-<版本>-setup.exe` 传 GitHub Releases。
 bin/obj 只是编译中间目录，发布区仓库不放任何构建产物。
 
 用法:
@@ -48,7 +48,7 @@ def read_version() -> str:
 VERSION = read_version()
 # 安装器的文件名必须带版本号（安装器设计规范 §一），
 # 且安装器 exe 本身就是发布产物，不再打 zip/7z 包
-SETUP_EXE = f"ComicConverter-{VERSION}-setup.exe"
+SETUP_EXE = f"ComicManager-{VERSION}-setup.exe"
 SKIP_EXT = {".pdb", ".xml", ".zip"}
 # 运行时产生的文件绝不能进安装包：会把开发者本机的设置带给用户
 SKIP_NAMES = {"config.json", "error.log"}

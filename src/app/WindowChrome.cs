@@ -5,7 +5,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 原生标题栏的 DWM 定制（规范 §四）：主窗口、关于框、自绘对话框共用同一套。

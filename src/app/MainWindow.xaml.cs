@@ -8,7 +8,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 
-namespace ComicConverter
+namespace ComicManager
 {
     public partial class MainWindow : Window
     {
@@ -59,6 +59,7 @@ namespace ComicConverter
                 if (it != null) _byCommand[it.Command] = mi;
             }
 
+            SetCheck("page", "home");
             SetCheck("mode", "convert");
             SetCheck("reading", "auto");
             SetCheck("target", "both");
@@ -88,6 +89,7 @@ namespace ComicConverter
                 if (it.Group == "mode") Js("UI.setMode('" + it.Value + "')");
                 else if (it.Group == "reading") Js("UI.setReading('" + it.Value + "')");
                 else if (it.Group == "target") Js("UI.setTarget('" + it.Value + "')");
+                else if (it.Group == "page") Js("UI.go('" + it.Value + "')");
                 return;
             }
 
@@ -96,10 +98,21 @@ namespace ComicConverter
                 case "add-source": Js("UI.addSource()"); break;
                 case "pick-out": Js("UI.pickOut()"); break;
 
-                // 与左栏三个按钮同一条路，菜单只是快捷入口
-                case "preview": Js("UI.preview()"); break;
-                case "start": Js("UI.start()"); break;
+                // 转换：菜单只管「去转换页 + 做那件事」，跟页面上的按钮同一条路
+                case "preview": GoPage("convert"); Js("UI.preview()"); break;
+                case "start": GoPage("convert"); Js("UI.start()"); break;
                 case "stop": Js("UI.stop()"); break;
+
+                // 刮削：同上，先切页再动手
+                case "scrape-scan": GoPage("scrape"); Js("UI.scan()"); break;
+                case "scrape-search": GoPage("scrape"); Js("UI.search()"); break;
+                case "scrape-preview": GoPage("scrape"); Js("UI.preview()"); break;
+                case "scrape-batch": GoPage("scrape"); Js("UI.batch()"); break;
+                case "scrape-start": GoPage("scrape"); Js("UI.start()"); break;
+                case "scrape-write-group": GoPage("scrape"); Js("UI.writeGroup()"); break;
+                case "scrape-stop": Js("UI.stop()"); break;
+                case "scrape-open": GoPage("scrape"); Js("UI.openSelected()"); break;
+                case "scrape-clear-log": Js("UI.clearLog()"); break;
 
                 case "open-out": OpenFolder(GetCfgString("out")); break;
                 case "open-appdir": OpenFolder(AppDomain.CurrentDomain.BaseDirectory); break;
@@ -129,6 +142,16 @@ namespace ComicConverter
         }
 
         /// <summary>
+        /// 切页并同步菜单勾号。菜单里的「开始转换 / 写入已匹配」都先经过这里，
+        /// 保证动作落在用户看得见的那一页上。
+        /// </summary>
+        void GoPage(string page)
+        {
+            SetCheck("page", page);
+            Js("UI.go('" + page + "')");
+        }
+
+        /// <summary>
         /// 页面替宿主发起的命令（页面内联确认点了「确认」、页面里的快捷键）走这里，
         /// 与菜单命令同一个分发器，避免两套逻辑各写一遍。
         /// </summary>
@@ -155,7 +178,7 @@ namespace ComicConverter
             {
                 return Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "ComicConverter");
+                    "ComicManager");
             }
         }
 
@@ -328,6 +351,15 @@ namespace ComicConverter
                 Web.CoreWebView2.Settings.AreDevToolsEnabled = false;
                 Web.CoreWebView2.Settings.IsZoomControlEnabled = false;
 
+                // 「保存的信息」自动填充会盖在输入框下面弹历史值，跟元数据毫无关系，一律关掉。
+                // 这是 WebView2 侧的总开关，比页面里逐个加 autocomplete 更可靠。
+                try
+                {
+                    Web.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
+                    Web.CoreWebView2.Settings.IsPasswordAutosaveEnabled = false;
+                }
+                catch { }   // 老运行时没有这两个属性，页面侧已有 autocomplete=off 兜底
+
                 // 菜单勾选状态跟随界面回填，避免菜单与面板不一致
                 Web.CoreWebView2.WebMessageReceived += OnWebMessage;
 
@@ -408,10 +440,18 @@ namespace ComicConverter
                     var act = Convert.ToString(parsed["act"]);
                     if (act == "clear-cache") ClearCache();
                     else if (act == "reset-config") ResetConfig();
+                    else if (act == "open-path")
+                    {
+                        // 页面上按 Ctrl+E：把选中的漫画目录/文件交给资源管理器定位
+                        var path = Convert.ToString(parsed["path"]);
+                        if (!string.IsNullOrEmpty(path) && !Api.Reveal(path))
+                            Toast("这个路径不存在：" + path);
+                    }
                     else RunCommand(act);
                     return;
                 }
 
+                if (parsed.ContainsKey("page")) SetCheck("page", Convert.ToString(parsed["page"]));
                 if (parsed.ContainsKey("mode")) SetCheck("mode", Convert.ToString(parsed["mode"]));
                 if (parsed.ContainsKey("reading")) SetCheck("reading", Convert.ToString(parsed["reading"]));
                 if (parsed.ContainsKey("target")) SetCheck("target", Convert.ToString(parsed["target"]));
@@ -423,9 +463,11 @@ namespace ComicConverter
                 }
                 if (parsed.ContainsKey("count")) StCount.Text = Convert.ToString(parsed["count"]);
                 if (parsed.ContainsKey("current")) StCurrent.Text = Convert.ToString(parsed["current"]);
-                if (parsed.ContainsKey("targetText")) StTarget.Text = "目标 " + parsed["targetText"];
-                if (parsed.ContainsKey("readingText")) StReading.Text = "方向 " + parsed["readingText"];
-                if (parsed.ContainsKey("jobs")) StJobs.Text = "并发 " + parsed["jobs"];
+                // 状态栏右侧三段：文案由页面整段给（转换页是「目标 X / 方向 X / 并发 N」，
+                // 刮削页换成本页参数），宿主不再自己拼前缀 —— 一页一套参数，拼死前缀就串味了
+                if (parsed.ContainsKey("targetText")) StTarget.Text = Convert.ToString(parsed["targetText"]);
+                if (parsed.ContainsKey("readingText")) StReading.Text = Convert.ToString(parsed["readingText"]);
+                if (parsed.ContainsKey("jobs")) StJobs.Text = Convert.ToString(parsed["jobs"]);
             }
             catch { }
         }

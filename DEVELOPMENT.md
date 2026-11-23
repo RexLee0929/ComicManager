@@ -20,22 +20,19 @@ python tools/build.py --clean    # 先清 bin/obj 再编译
 
 构建前会运行 `tools/no_system_popup.py`，扫描主程序和安装器源码中的系统消息框、提示音和网页原生弹窗等禁止项；有命中时停止编译。可单独运行 `python tools/no_system_popup.py`，或加 `--list` 查看规则。
 
-手工分步也可以，注意安装器依赖主程序产物打成的 `payload.zip`：
+安装器依赖主程序产物打成的 `payload.zip`；请使用上面的构建脚本，脚本会在编译主程序后生成 payload，再编译安装器。
 
-```bash
-cd src/app && dotnet build -c Release
-cd ../installer && dotnet build -c Release
-```
-
-构建产物统一复制到编辑区根的 **`artifacts/`**（每次构建整目录重建，不残留旧版本）：安装包是 `artifacts/ComicConverter-<版本>-setup.exe`（文件名带版本号，构建时从 `version.props` 自动取），旁边是主程序运行文件。`src/*/bin/` 只是编译中间目录。发布区仓库不放任何构建产物，安装包直接从 `artifacts/` 传 GitHub Releases。`payload.zip` 在 `.gitignore` 里。
+构建产物统一复制到编辑区根的 **`artifacts/`**（每次构建整目录重建，不残留旧版本）：安装包是 `artifacts/ComicManager-<版本>-setup.exe`（文件名带版本号，构建时从 `version.props` 自动取），旁边是主程序运行文件。`src/*/bin/` 只是编译中间目录。发布区仓库不放任何构建产物，安装包直接从 `artifacts/` 传 GitHub Releases。`payload.zip` 在 `.gitignore` 里。
 
 ## 改动范围
 
 - 菜单项在 `src/app/AppMenu.cs` 的数据表里加，命令实现在 `MainWindow.Run` 里加一个 `case`
 - 「帮助 → 关于」的文案在 `src/app/ABOUT.md`，Markdown 格式，占位符 `{NAME}` `{VERSION}` `{AUTHOR}` `{TAGLINE}` 启动时替换
 - 界面本体是 `src/app/Web/index.html`，一个文件装完 HTML、CSS 和 JS，经本地 HTTP 服务加载
+- 三个页面都在同一个 `index.html` 里（`section.page#pg-home|pg-convert|pg-scrape`），靠 `go(page)` 切显示、不重新加载；加页面要同时改 `AppMenu.Build()` 的「页面」组与 `AppMenu` 里的 `page:*` 命令
 - 加界面开关时三处一起改：`Web/index.html` 的控件 + `getCfg()` + `loadCfg()`，`Api.cs` 的 `DefaultConfig()` 加默认值，`Core.cs` 里用 `GetBool` / `GetStr` 读（`t2s_label` 就是一个例子：控制括号里的原卷标签要不要跟着繁转简）
-- 版本号只改 `src/version.props`，主程序和安装器都导入它；安装器文件名（`ComicConverter-<版本>-setup.exe`）跟着自动变
+- 版本号只改 `src/version.props`，主程序和安装器都导入它；安装器文件名（`ComicManager-<版本>-setup.exe`）跟着自动变
+- 刮削侧加字段：`Metadata` 加属性 → 表单 `index.html` 加输入 → `Scrape.MetaFromJson` / `MetaToJson` 补映射 → `ComicInfo.Render` 加 `Tag(...)`。少一环就会出现「界面上填了但没写进 XML」
 
 **README.md 和 LICENSE 会被编进安装器**（`src/installer/Installer.csproj` 里的 `EmbeddedResource`），装完写到安装目录，完成页可以打开。所以改完 README 要重新编译安装器，否则新编出来的安装包带的还是旧文案。也因为这个，README 要能脱离 GitHub 单独读懂，别放相对路径的图片。
 
@@ -61,19 +58,24 @@ src/app/           主程序
   Origin.cs        阅读方向判断、联网查证、缓存
   Repack.cs        CBZ 互转
   Chinese.cs       OpenCC 词表繁转简（Data/ 下三张表）
-  Api.cs           本地 HTTP 接口与任务调度
+  Meta.cs          元数据模型（ComicInfo 超集）→ 渲染 XML / series.json；MetaWriter 写包、备份、封面
+  Sources.cs       三个元数据源（Bangumi / MangaUpdates / MangaDex）：搜索、详情、匹配打分、跨源补齐
+  Scrape.cs        刮削编排：扫目录成系列、册号与排序、预览渲染、批量写入、读回留档
+  Rename.cs        按模板重命名（预览与执行共用同一套渲染）
+  Api.cs           本地 HTTP 接口与任务调度（转换与刮削各一套状态）
   Page.cs          下发 index.html，替换品牌色
   AboutDialog.xaml 关于窗
   AboutDoc.cs      Markdown → FlowDocument
   BrandIcon.cs     从 app.ico 挑最大帧当品牌图标（启动画面 / 窗口图标）
-  Web/index.html   界面
+  Brand.cs         程序名 / 版本 / 作者的唯一出口
+  Web/index.html   界面（三页：首页 / 格式转换 / 元数据刮削）
   app.ico          程序图标（与 src/installer/app.ico 保持一致）
 src/installer/     安装 / 卸载向导（WinForms）
   WizardShell.cs   向导外壳（页面切换、按钮布局）
   Controls.cs      自绘控件（标题、正文、进度条）
-  InstallForm.cs   安装流程各页
+  InstallForm.cs   安装流程各页（含 1.x 旧版检测的「附加任务」块）
   UninstallForm.cs 卸载页
-  Program.cs       payload 解包、快捷方式、注册表（卸载项固定写 64 位视图）
+  Program.cs       payload 解包、快捷方式、注册表（卸载项固定写 64 位视图）、1.x 迁移
   MsgDialog.cs     自绘对话框（Info / Ask），安装器里唯一允许的弹窗
   Theme.cs         从图标派生整套配色
 src/version.props  版本与作者信息
@@ -89,6 +91,25 @@ tools/
 > 不同步到发布区；`_shots/` 是它们的输出目录。
 
 主程序是 WPF 外壳加 WebView2 渲染界面，后端用 `TcpListener` 起一个只监听 `127.0.0.1` 的 HTTP 服务承接界面请求，相当于把一个本地网页包在原生窗口里。压缩用 `System.IO.Compression` 的 `ZipArchive`，繁简用 OpenCC 的纯文本词表做最长匹配，除此之外没有第三方依赖。
+
+## 刮削链路
+
+```
+Scrape.Scan        目录 → 系列（父文件夹 = 系列）→ 每本的卷 / 话 / 标题 / Format
+Sources.Search     关键词 → 候选（主标题 + 全部别名打分；同分保持来源顺序）
+Sources.Fetch      候选 id → Metadata，并用其余已勾选来源补空字段
+index.html         用户改字段，「对比」看将要覆盖什么
+MetaWriter.Write   按档位渲染 ComicInfo，只替换包内 XML；附带 .bak / 留档 / series.json / 封面
+```
+
+几点是设计上刻意这么做的：
+
+- **`Metadata` 是中间模型，不直接拼 XML**：Kavita 按 `Volume` 排、Komga 按 `Number` 排，番外的表示法也不同（`Format=Special` vs `x.5`）。先落地一份数据，才能「同一份数据、三种档位输出」，也能在表单里自由改。
+- **写入是「读原包 → 写同目录 .tmp → 替换」**：替换前按开关留 `.bak`，中途失败不会留下半截包。图片条目原样拷贝，只重写 `ComicInfo.xml` 一个条目。
+- **留档原 XML**：覆盖前的完整 XML 以注释形式附在文件末尾，服务器解析时忽略注释；`Scrape.ReadOriginal` 能从系列里任意一本带留档的文件还原整组，供「元数据回退」。
+- **系列级产物失败不算整次失败**：`series.json` 与 `cover.jpg` 写不进去只记日志，`ComicInfo.xml` 写成功就算这一本成功。
+- **只收 `.cbz`**：CBR 是 RAR，`ZipArchive` 写不回，界面上直接说明，避免用户误点。
+- **册号**：正传按卷号编 `V01`，番外按出现顺序编 `SP01`；番外不拿卷号编号，否则和正传同号分不清。`SpecialAsNumber` 只在 Komga 档生效。
 
 ## 看界面长什么样
 
@@ -114,7 +135,7 @@ dotnet run -c Release --project tools/ui_render -- tools/_shots/ui
 ## 几个坑
 
 - **WPF 解码 ico 会重排帧序，首帧只有 48px**（本机实测顺序：48, 64, 32, 24, 128, 16, 256）。直接写 `Source="app.ico"` 拿到的永远是 48px 首帧，放到 60px 启动位、高缩放标题栏上就发虚。图标一律走 `BrandIcon.Source`（`BitmapDecoder` 遍历全部帧挑最大），XAML 里的 `Source` 只作兜底。
-- **相对的 pack URI 按入口程序集解析**：`pack://application:,,,/app.ico` 在主程序里没问题，在 `ui_render` 这类引用主程序集的外壳工具里就找不到资源。库代码里要写显式的 `pack://application:,,,/ComicConverter;component/app.ico`（`Accent.cs`、`BrandIcon.cs` 都已这么写）。
+- **相对的 pack URI 按入口程序集解析**：`pack://application:,,,/app.ico` 在主程序里没问题，在 `ui_render` 这类引用主程序集的外壳工具里就找不到资源。库代码里要写显式的 `pack://application:,,,/ComicManager;component/app.ico`（`Accent.cs`、`BrandIcon.cs` 都已这么写）。改程序集名时这两处一起改，否则图标会静默变成空白。
 - **`VisualBrush` 不含 Margin**。离屏渲染按元素内容区截的话，截出来会像是「按钮贴底、卡片右边框没了」，其实是渲染器的问题。`ui_render` 里已经改成按 Margin 偏移绘制。
 - **`RichTextBox.Document` 赋值后 `PagePadding` 会被强制改回 `5,0,5,0`**，赋值时设一次没用 —— 必须在 `Doc.Loaded` 之后再压一次，并且每次自适应高度都顺手压（`AboutDialog.ZeroPadding`）。漏掉的现象是正文整体右移 5px，跟卡片内边距对不齐。
 - **`FlowDocument` 不计首段上边距和末段下边距**，所以关于窗卡片的上下留白只能放在 Border 的内边距里，放段落 Margin 上不会生效。
@@ -125,6 +146,7 @@ dotnet run -c Release --project tools/ui_render -- tools/_shots/ui
 - **WinForms 的 TextBox 只认 CRLF**。内嵌的 LICENSE 常是 LF 行尾，直接塞进许可页会整篇挤成一段。`Program.cs` 的 `ToCrlf` 在展示前统一行尾。
 - **逐文件 `TryDelete` 会吞掉失败**。一个文件被占用或权限不足，卸载照样往下走，最后报「已从您的计算机上移除」——用户打开目录发现东西还在。删完必须用 `Program.RemainingFiles` 复查安装目录（豁免勾了保留的 `config.json` 和 `uninstall.exe` 自己），有残留就走「卸载未完全成功」页。别用「抛自定义异常」表达残留：那是预期内的正常分支，返回值 + 专用页更清楚。
 - **卸载向导一进入就检测占用会挡住信息**。程序开着时点卸载，向导直接落在「正在运行」页，用户连卸载内容、安装位置、「保留配置文件」都没看见。检测放在点「卸载」那一刻；`RemoveAll` 开头只复查占用并抛 `StillRunningException`，由向导切回占用页，绝不静默杀进程。
+- **改程序名不是改 exe 名就完事**：卸载登记项、安装目录、缓存目录、快捷方式文件名都带着旧名字。1.x 叫 ComicConverter，2.0 改名后老用户升级会变成两份并存（旧版还在应用列表里、旧快捷方式指向旧 exe、旧 `config.json` 新版读不到）。`Program.MigrateLegacyAfterInstall` 负责收尾：先搬 `config.json` 与 `origin-cache.json`，再删旧目录 / 卸载项 / 快捷方式。**设置复制失败或旧版正在运行时保留旧目录**，原因写进 `LegacyResult`，完成页用警示色说出来；`--silent` 一律不迁移。
 - 端口 `8765` 被上一个没退干净的实例占着的话，本地服务起不来。测试前先 `taskkill`。
 - **行尾**：仓库里的文本文件是 LF。用 Windows 上的编辑器改完记得确认没被转成 CRLF。
 

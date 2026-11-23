@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>
     /// 自绘对话框：安装 / 卸载向导里所有「只能弹」的提示都走这里，不许用系统消息框。

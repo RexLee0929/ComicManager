@@ -7,7 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 「帮助 → 关于」。三段式布局（内容框 / 联系条 / 按钮栏），与 txtFormat 同构：
@@ -82,7 +82,7 @@ namespace ComicConverter
         {
             if (_aboutMd != null) return _aboutMd;
             var asm = typeof(AboutDialog).Assembly;
-            using (var s = asm.GetManifestResourceStream("ComicConverter.ABOUT.md"))
+            using (var s = asm.GetManifestResourceStream("ComicManager.ABOUT.md"))
             {
                 if (s == null) return _aboutMd = Brand.Name + " " + Brand.Version;
                 using (var r = new System.IO.StreamReader(s, System.Text.Encoding.UTF8))

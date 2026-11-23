@@ -2,7 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Media.Imaging;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 从 app.ico 里取「最大的那一帧」当品牌图标。
@@ -32,7 +32,7 @@ namespace ComicConverter
                 // 显式写 component URI：相对的 pack://application:,,,/app.ico
                 // 按入口程序集解析，在 ui_render 这类外壳工具里会找不到资源
                 var res = Application.GetResourceStream(
-                    new Uri("pack://application:,,,/ComicConverter;component/app.ico"));
+                    new Uri("pack://application:,,,/ComicManager;component/app.ico"));
                 if (res == null) { LastError = "GetResourceStream 返回 null"; return null; }
                 using (res.Stream)
                 {

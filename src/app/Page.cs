@@ -2,7 +2,7 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>内嵌的界面 HTML。</summary>
     public static class Page
@@ -17,7 +17,7 @@ namespace ComicConverter
                 try
                 {
                     var asm = Assembly.GetExecutingAssembly();
-                    using (var s = asm.GetManifestResourceStream("ComicConverter.Web.index.html"))
+                    using (var s = asm.GetManifestResourceStream("ComicManager.Web.index.html"))
                     {
                         if (s == null) return "<h1>界面资源缺失</h1>";
                         using (var r = new StreamReader(s, Encoding.UTF8))

@@ -1,8 +1,8 @@
-﻿<Window x:Class="ComicConverter.MainWindow"
+﻿<Window x:Class="ComicManager.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="ComicConverter" Height="820" Width="1280"
+        Title="ComicManager" Height="820" Width="1280"
         Icon="app.ico"
         MinHeight="700" MinWidth="1120"
         WindowStartupLocation="CenterScreen"
@@ -34,7 +34,7 @@
                     <Image x:Name="SplashIcon" Source="app.ico" Width="60" Height="60"
                            RenderOptions.BitmapScalingMode="HighQuality"
                            HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                    <TextBlock Text="ComicConverter" FontSize="17" FontWeight="SemiBold"
+                    <TextBlock Text="ComicManager" FontSize="17" FontWeight="SemiBold"
                                Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center"/>
                     <TextBlock x:Name="TxtVersion" Text="" FontSize="11.5" FontWeight="SemiBold"
                                Foreground="{DynamicResource AccentBrush}"

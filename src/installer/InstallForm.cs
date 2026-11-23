@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>
     /// 安装向导：欢迎 → 安装模式 → 许可协议 → 安装位置 → 附加任务 → 准备 → 安装 → 完成。
@@ -31,11 +31,13 @@ namespace ComicConverterSetup
         InstallMode _mode = Program.Mode;
         bool _desktop = true, _start = true, _run = true;
         bool _overwriteConfig;    // 勾了「覆盖现有配置」才为 true；默认不动本地配置
+        bool _migrateLegacy = true;   // 装了 1.x 时的默认选择（取消后返回本页也不重置）
 
         ModeCard _cardUser, _cardAll;
         Label _modeHint;
         TextBox _dirBox;
         CheckBox _cbDesktop, _cbStart, _cbRun;
+        CheckBox _cbLegacy;           // 装了 1.x 才有：安装完成后卸载旧版并沿用设置
         ProgressStrip _bar;
         Label _status;
         CheckBox _cbRunNow;
@@ -137,8 +139,9 @@ namespace ComicConverterSetup
               + "继续之前，建议关闭其它正在运行的程序。", 0, 0, 428, 110);
 
             Strong("这个程序做什么", 0, 120, 428, 22);
-            L("把 Mox / Kmoe 等站点导出的漫画 EPUB 批量整理成 Kavita / Komga 能正确识别的 CBZ："
-              + "按 spine 还原页序、重算卷号、写入 ComicInfo，图片字节原样拷贝。", 0, 144, 428, 70);
+            L("把漫画站导出的 EPUB 整理成 Kavita / Komga 认得出的 CBZ：按 spine 还原页序、"
+              + "重算卷号、写入 ComicInfo，图片字节原样拷贝；已有 CBZ 还能从 Bangumi / "
+              + "MangaUpdates / MangaDex 刮削元数据。", 0, 144, 428, 84);
         }
 
         void BuildMode()
@@ -309,7 +312,7 @@ namespace ComicConverterSetup
         {
             if (string.IsNullOrEmpty(dir)) return "请填写安装位置。";
             if (!Path.IsPathRooted(dir))
-                return "安装位置要写完整路径，例如：D:\\Apps\\ComicConverter";
+                return "安装位置要写完整路径，例如：D:\\Apps\\ComicManager";
 
             try
             {
@@ -494,14 +497,37 @@ namespace ComicConverterSetup
         {
             TitleLabel.Text = "选择附加任务";
 
-            L("选择安装程序要执行的附加任务，然后点「下一步」。", 0, 0, 428, 20);
+            // 装了 1.x（ComicConverter）的话，先处理它再谈附加图标：
+            // 不处理就会新旧两份并存 —— 旧版还在应用列表里、旧快捷方式还指向旧 exe、
+            // 旧设置也不会被新版读到。默认勾选，用户仍可取消。
+            int y = 0;
+            if (Program.HasLegacy())
+            {
+                var old = Program.LegacyDir();
+                var ver = Program.LegacyVersion(old);
+                Strong("检测到旧版 " + Program.LegacyAppName
+                       + (string.IsNullOrEmpty(ver) ? "" : " v" + ver), 0, 0, 428, 22);
 
-            Strong("附加图标：", 0, 34, 428, 22);
-            _cbDesktop = Check("创建桌面快捷方式", 16, 60, 320, _desktop);
-            _cbStart = Check("创建开始菜单快捷方式", 16, 86, 320, _start);
+                var path = L(old, 0, 24, 428, 18);
+                path.AutoEllipsis = true;          // 长路径单行裁切，悬停不折行压住下面的复选项
+                path.ForeColor = Theme.Dim;
 
-            Strong("完成后：", 0, 124, 428, 22);
-            _cbRun = Check("立即运行 " + Program.AppName, 16, 150, 320, _run);
+                _cbLegacy = Check("安装完成后卸载旧版，并沿用它的设置与阅读方向缓存", 0, 48, 400, _migrateLegacy);
+                _cbLegacy.CheckedChanged += delegate { _migrateLegacy = _cbLegacy.Checked; };
+                y = 80;
+            }
+            else
+            {
+                L("选择安装程序要执行的附加任务，然后点「下一步」。", 0, 0, 428, 20);
+                y = 34;
+            }
+
+            Strong("附加图标：", 0, y, 428, 22);
+            _cbDesktop = Check("创建桌面快捷方式", 16, y + 26, 320, _desktop);
+            _cbStart = Check("创建开始菜单快捷方式", 16, y + 52, 320, _start);
+
+            Strong("完成后：", 0, y + 90, 428, 22);
+            _cbRun = Check("立即运行 " + Program.AppName, 16, y + 116, 320, _run);
         }
 
         void BuildReady()
@@ -667,7 +693,7 @@ namespace ComicConverterSetup
         {
             if (string.IsNullOrEmpty(dir)) return "请填写安装位置。";
             if (!Path.IsPathRooted(dir))
-                return "安装位置要写完整路径，例如：\nD:\\Apps\\ComicConverter";
+                return "安装位置要写完整路径，例如：\nD:\\Apps\\ComicManager";
 
             bool created = !Directory.Exists(dir);
             try
@@ -718,6 +744,10 @@ namespace ComicConverterSetup
             Body.Controls.Add(_bar);
 
             _status = L("准备中…", 0, 78, 428, 160);
+
+            // 附加任务页的旧版选项（没装 1.x 时控件为 null，视为不迁移）
+            Program.MigrateLegacy = Program.HasLegacy() && _migrateLegacy;
+            Program.LegacyResult = null;
 
             var dir = _dir;
             var mode = _mode;
@@ -827,6 +857,14 @@ namespace ComicConverterSetup
 
             y = Line("作者：" + Program.Author + "　　联系邮箱：" + Program.Email, y, 428);
             y = Line("桌面与开始菜单都有快捷方式，卸载可从「设置 → 应用」里操作。", y, 428);
+
+            // 旧版没处理干净（有文件被占用、权限不足）时说清楚，别让用户以为已经删掉了
+            if (!string.IsNullOrEmpty(Program.LegacyResult))
+            {
+                var warn = L(Program.LegacyResult, 0, y, 428, MeasureH(Program.LegacyResult, 428));
+                warn.ForeColor = Theme.Warn;
+                y = warn.Bottom + 4;
+            }
             y += 12;
             _cbRunNow = Check("立即运行 " + Program.AppName, 0, y, 380, _run);
         }

@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 24 栅格线性图标。路径数据来自 icons/Unified（《图标规范》），不依赖图片资源。
@@ -50,6 +50,7 @@ namespace ComicConverter
             { "download", new[] { new P("M12 4v12.5", false), new P("M7 11.5l5 5 5-5", false), new P("M4 17.5v2A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-2", false) } },
             { "copy", new[] { new P("M11.4 9L18.6 9C19.9255 9 21 10.0745 21 11.4L21 18.6C21 19.9255 19.9255 21 18.6 21L11.4 21C10.0745 21 9 19.9255 9 18.6L9 11.4C9 10.0745 10.0745 9 11.4 9Z", false), new P("M15 9V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3", false) } },
             { "check", new[] { new P("M4.5 12.5l5 5L19.5 7", false) } },
+            { "search", new[] { new P("M10.6 4.5C14.07 4.5 16.9 7.33 16.9 10.8C16.9 14.27 14.07 17.1 10.6 17.1C7.13 17.1 4.3 14.27 4.3 10.8C4.3 7.33 7.13 4.5 10.6 4.5Z", false), new P("M15.2 15.4L20 20.2", false) } },
             { "eye", new[] { new P("M2.5 12S6.2 5.5 12 5.5 21.5 12 21.5 12 17.8 18.5 12 18.5 2.5 12 2.5 12z", false), new P("M12 9C13.6569 9 15 10.3431 15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9Z", false) } },
             { "play", new[] { new P("M8 5.92A1.92 1.92 0 0 1 9.6 5.07L18.4 10.93A1.92 1.92 0 0 1 18.4 13.07L9.6 18.93A1.92 1.92 0 0 1 8 18.08Z", false) } },
             { "stop", new[] { new P("M7.92 6L16.08 6C17.1404 6 18 6.85961 18 7.92L18 16.08C18 17.1404 17.1404 18 16.08 18L7.92 18C6.85961 18 6 17.1404 6 16.08L6 7.92C6 6.85961 6.85961 6 7.92 6Z", false) } },

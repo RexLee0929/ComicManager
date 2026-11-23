@@ -1,16 +1,16 @@
 using System;
 using System.Reflection;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>程序名、版本、作者信息的唯一出口（版本号来自 src/version.props）。</summary>
     public static class Brand
     {
         /// <summary>程序名，只用英文。</summary>
-        public const string Name = "ComicConverter";
+        public const string Name = "ComicManager";
 
         /// <summary>一句话说明，仅作副标题，不参与命名。</summary>
-        public const string Tagline = "EPUB → CBZ 漫画库整理";
+        public const string Tagline = "漫画库格式转换与元数据刮削";
 
         public const string Author = "Rex Lee";
         public const string Email = "rexlee@rexleepro.com";

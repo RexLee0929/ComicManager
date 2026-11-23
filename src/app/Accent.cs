@@ -8,7 +8,7 @@ using System.Windows.Media;
 using DColor = System.Drawing.Color;
 using MColor = System.Windows.Media.Color;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 品牌色唯一来源是程序图标（app.ico）。
@@ -97,7 +97,7 @@ namespace ComicConverter
                 // 显式写 component URI：相对的 pack://application:,,,/app.ico
                 // 按入口程序集解析，在 ui_render 这类外壳工具里会找不到资源
                 var res = Application.GetResourceStream(
-                    new Uri("pack://application:,,,/ComicConverter;component/app.ico"));
+                    new Uri("pack://application:,,,/ComicManager;component/app.ico"));
                 if (res == null) return null;
                 using (var ico = new Icon(res.Stream, new System.Drawing.Size(64, 64)))
                     return ico.ToBitmap();

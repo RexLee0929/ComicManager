@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 菜单命令表。菜单结构完全由这里的数据生成，XAML 里不写死任何菜单项：
@@ -55,7 +55,14 @@ namespace ComicConverter
             var tree = new List<KeyValuePair<string, List<Item>>>();
 
             // 一级菜单不是「文件 / 编辑 / 查看 / 工具」模板，而是程序自己的词汇：
-            // 转换（干活）→ 输出（产出什么）→ 工具（排障）→ 帮助（强制）。
+            // 页面（去哪儿）→ 转换（干活）→ 刮削（干活）→ 输出（产出什么）→ 工具（排障）→ 帮助（强制）。
+
+            tree.Add(Pair("页面(_G)", new List<Item>
+            {
+                Check("首页(_H)", "page:home", "page", "home"),
+                Check("格式转换(_C)", "page:convert", "page", "convert"),
+                Check("元数据刮削(_S)", "page:scrape", "page", "scrape")
+            }));
 
             tree.Add(Pair("转换(_C)", new List<Item>
             {
@@ -69,6 +76,22 @@ namespace ComicConverter
                 Of("清空预演结果(_K)", "clear-preview", "list", "Ctrl+Shift+L"),
                 Sep(),
                 Of("退出(_X)", "exit", "close", "Alt+F4")
+            }));
+
+            tree.Add(Pair("刮削(_S)", new List<Item>
+            {
+                Of("扫描目录(_D)", "scrape-scan", "folder"),
+                Of("搜索当前系列(_F)", "scrape-search", "search"),
+                Sep(),
+                Of("生成预览(_P)", "scrape-preview", "eye"),
+                Of("批量取首条(_B)", "scrape-batch", "list"),
+                Of("写入整组(_G)", "scrape-write-group", "convert"),
+                Of("写入全部已匹配(_W)", "scrape-start", "play"),
+                Of("停止写入(_T)", "scrape-stop", "stop"),
+                Sep(),
+                Of("打开选中目录(_O)", "scrape-open", "open", "Ctrl+E"),
+                Sep(),
+                Of("清空日志(_L)", "scrape-clear-log", "clean")
             }));
 
             tree.Add(Pair("输出(_O)", new List<Item>

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>极简 JSON：避免引入 System.Web.Extensions（与 WPF 的 XAML 编译器冲突）。</summary>
     public static class MiniJson

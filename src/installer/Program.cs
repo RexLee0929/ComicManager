@@ -9,7 +9,7 @@ using System.Text;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>安装范围。对应 txtFormat 里 Inno 的「仅为我 / 为所有用户」选择。</summary>
     public enum InstallMode { PerUser, AllUsers }
@@ -17,17 +17,17 @@ namespace ComicConverterSetup
     static class Program
     {
         /// <summary>程序名只用英文。</summary>
-        public const string AppName = "ComicConverter";
-        public const string AppId = "ComicConverter";
-        public const string Tagline = "EPUB → CBZ 漫画库整理";
+        public const string AppName = "ComicManager";
+        public const string AppId = "ComicManager";
+        public const string Tagline = "漫画库格式转换与元数据刮削";
         public const string Author = "Rex Lee";
         public const string Email = "rexlee@rexleepro.com";
 
-        public const string AppExe = "ComicConverter.exe";
+        public const string AppExe = "ComicManager.exe";
         public const string ReadmeName = "README.md";
 
         const string UninstallSubKey =
-            @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ComicConverter";
+            @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ComicManager";
 
         // ------------------------------------------------------------ 基本信息
         static string _version;
@@ -536,7 +536,7 @@ namespace ComicConverterSetup
             try
             {
                 var tmp = Path.Combine(Path.GetTempPath(),
-                    "ComicConverter-uninstall-" + Process.GetCurrentProcess().Id + ".exe");
+                    "ComicManager-uninstall-" + Process.GetCurrentProcess().Id + ".exe");
                 File.Copy(Application.ExecutablePath, tmp, true);
 
                 var psi = new ProcessStartInfo(tmp, "--uninstall-run \"" + dir + "\"")
@@ -635,6 +635,10 @@ namespace ComicConverterSetup
                 CreateShortcut(Path.Combine(StartMenuDir(allUsers), AppName + ".lnk"), dir);
 
             WriteUninstallEntry(dir, mode);
+
+            // 最后处理 1.x 旧版：新版已经落盘、快捷方式与卸载项也已写好，
+            // 这时候收旧版不会出现「新的没装上、旧的先删了」。
+            MigrateLegacyAfterInstall(dir, resetConfig);
         }
 
         static void CreateShortcut(string lnkPath, string targetDir)
@@ -658,6 +662,289 @@ namespace ComicConverterSetup
                 lt.InvokeMember("Save", BindingFlags.InvokeMethod, null, lnk, null);
             }
             catch { }
+        }
+
+        // ------------------------------------------------------------ 1.x 旧版迁移
+        //
+        // 1.0.x 叫 ComicConverter：卸载登记项、安装目录、缓存目录全是另一个名字。
+        // 2.0 改名 ComicManager 后，老用户升级会变成「两个程序并存」——旧版还留在应用列表里，
+        // 桌面快捷方式还指向旧 exe，旧设置文件也不会被新版读到。这里在安装完成时收掉旧版，
+        // 并把设置与阅读方向缓存带到新位置。
+        //
+        // 删除是破坏性动作，只在用户于「附加任务」页勾选时执行（默认勾选）；
+        // --silent 安装不动旧版本，留给用户自己决定。
+
+        public const string LegacyAppName = "ComicConverter";
+        public const string LegacyAppId = "ComicConverter";
+        public const string LegacyExe = "ComicConverter.exe";
+
+        const string LegacyUninstallSubKey =
+            @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ComicConverter";
+
+        /// <summary>附加任务页的复选框结果。</summary>
+        public static bool MigrateLegacy;
+
+        /// <summary>旧版处理结果：非空表示有需要告诉用户的情况（未能删除 / 未能复制）。</summary>
+        public static string LegacyResult;
+
+        /// <summary>1.x 的缓存目录（阅读方向判定结果）。</summary>
+        public static string LegacyCacheDir
+        {
+            get
+            {
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    LegacyAppId);
+            }
+        }
+
+        /// <summary>旧版安装目录：先读卸载登记项，读不到再探两个默认位置；都没有返回 null。</summary>
+        public static string LegacyDir()
+        {
+            foreach (var all in new[] { true, false })
+            {
+                foreach (var view in Views)
+                {
+                    try
+                    {
+                        var hive = all ? RegistryHive.LocalMachine : RegistryHive.CurrentUser;
+                        using (var root = RegistryKey.OpenBaseKey(hive, view))
+                        using (var k = root.OpenSubKey(LegacyUninstallSubKey))
+                        {
+                            var v = k == null ? null : k.GetValue("InstallLocation") as string;
+                            if (!string.IsNullOrEmpty(v) && Directory.Exists(v)) return v;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            var guessed = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                             "Programs", LegacyAppId),
+                Path.Combine(ProgramFilesDir, LegacyAppId)
+            };
+            foreach (var d in guessed)
+            {
+                try { if (File.Exists(Path.Combine(d, LegacyExe))) return d; }
+                catch { }
+            }
+            return null;
+        }
+
+        /// <summary>旧版版本号（从 exe 的文件版本读），读不到返回 null。</summary>
+        public static string LegacyVersion(string dir)
+        {
+            try
+            {
+                var exe = Path.Combine(dir, LegacyExe);
+                if (!File.Exists(exe)) return null;
+                var vi = FileVersionInfo.GetVersionInfo(exe);
+                if (!string.IsNullOrEmpty(vi.ProductVersion)) return vi.ProductVersion.Trim();
+                if (!string.IsNullOrEmpty(vi.FileVersion)) return vi.FileVersion.Trim();
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>本机是否装着 1.x（附加任务页据此决定要不要显示迁移选项）。</summary>
+        public static bool HasLegacy()
+        {
+            return LegacyDir() != null;
+        }
+
+        /// <summary>旧版目录下的实例。与 RunningInstances 同一套判定，但仍不杀进程。</summary>
+        static Process[] LegacyInstances(string dir)
+        {
+            var list = new List<Process>();
+            try
+            {
+                var root = string.IsNullOrEmpty(dir) ? null : dir.TrimEnd('\\') + "\\";
+                foreach (var p in Process.GetProcessesByName(LegacyAppId))
+                {
+                    string exe = null;
+                    try { exe = p.MainModule == null ? null : p.MainModule.FileName; } catch { }
+                    if (root == null || string.IsNullOrEmpty(exe)
+                        || exe.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                        list.Add(p);
+                }
+            }
+            catch { }
+            return list.ToArray();
+        }
+
+        /// <summary>
+        /// 安装完成后处理旧版：搬设置与缓存 → 删旧目录 / 卸载项 / 快捷方式。
+        /// 任何一步失败都不影响本次安装，只把原因记进 <see cref="LegacyResult"/>，由完成页说出来。
+        /// </summary>
+        /// <param name="newDir">这次装到哪。</param>
+        /// <param name="resetConfig">用户勾了「覆盖现有配置」——此时不搬旧设置。</param>
+        public static void MigrateLegacyAfterInstall(string newDir, bool resetConfig)
+        {
+            LegacyResult = null;
+            if (!MigrateLegacy) return;
+
+            var old = LegacyDir();
+            if (string.IsNullOrEmpty(old)) return;
+
+            var notes = new List<string>();
+            bool sameDir = false;
+            try
+            {
+                sameDir = string.Equals(Path.GetFullPath(old).TrimEnd('\\'),
+                                        Path.GetFullPath(newDir).TrimEnd('\\'),
+                                        StringComparison.OrdinalIgnoreCase);
+            }
+            catch { }
+
+            // 1. 设置文件：新目录里还没有才搬（用户明确要默认设置时也不搬）
+            bool configOk = true;
+            if (!sameDir && !resetConfig && !HasConfig(newDir))
+            {
+                try
+                {
+                    var src = SettingsPathIn(old);
+                    if (File.Exists(src))
+                    {
+                        Directory.CreateDirectory(newDir);
+                        File.Copy(src, SettingsPathIn(newDir), true);
+                    }
+                }
+                catch
+                {
+                    configOk = false;
+                    notes.Add("旧版设置没能复制");
+                }
+            }
+
+            // 2. 阅读方向缓存：跟着用户走，从 COMICCONVERTER 目录搬到 COMICMANAGER 目录
+            try
+            {
+                var srcCache = Path.Combine(LegacyCacheDir, "origin-cache.json");
+                var dstDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppId);
+                var dstCache = Path.Combine(dstDir, "origin-cache.json");
+                if (File.Exists(srcCache) && !File.Exists(dstCache))
+                {
+                    Directory.CreateDirectory(dstDir);
+                    File.Copy(srcCache, dstCache, true);
+                }
+            }
+            catch { notes.Add("阅读方向缓存没能复制"); }
+
+            // 3. 快捷方式与卸载登记：不论旧目录在哪都清一遍（两个范围、两个注册表视图）
+            foreach (var all in new[] { false, true })
+            {
+                TryDelete(Path.Combine(DesktopDir(all), LegacyAppName + ".lnk"));
+                TryDelete(Path.Combine(StartMenuDir(all), LegacyAppName + ".lnk"));
+            }
+            RemoveLegacyUninstallEntries();
+
+            // 4. 旧程序目录。设置没搬成功就不删 —— 那份 config.json 是用户唯一的一份。
+            if (!sameDir)
+            {
+                if (!configOk)
+                {
+                    notes.Add("旧版目录已保留：" + old);
+                }
+                else if (!File.Exists(Path.Combine(old, LegacyExe)))
+                {
+                    // 认不出是旧版安装目录就不动它，避免照着一条脏注册表路径删别人的文件夹
+                    notes.Add("旧版目录里没找到 " + LegacyExe + "，未删除：" + old);
+                }
+                else
+                {
+                    // 旧版可能被装在非标准目录（用户手填 D:\Apps，没补程序名那一层），
+                    // 里面会有别的程序。目录名不是 ComicConverter 就一个文件都不删 ——
+                    // 只清登记项与快捷方式，并在完成页说明要手动清理。
+                    var leaf = "";
+                    try { leaf = Path.GetFileName(old.TrimEnd('\\')); } catch { }
+
+                    if (!string.Equals(leaf, LegacyAppId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        notes.Add("旧版装在非标准目录，未自动删除（避免误删同目录里的其它文件）：" + old);
+                    }
+                    // 旧版还开着就不删（规范：不静默结束进程），让用户手动卸载
+                    else if (LegacyInstances(old).Length > 0)
+                    {
+                        notes.Add("旧版正在运行，未删除：" + old);
+                    }
+                    else
+                    {
+                        DeleteLegacyDir(old);
+                        if (Directory.Exists(old) && Directory.GetFileSystemEntries(old).Length > 0)
+                            notes.Add("旧版目录有文件没能删除，可手动清理：" + old);
+                    }
+                }
+            }
+            else
+            {
+                // 装到了旧版目录本身：旧 exe 与旧说明文件要清掉，配置留在原地继续用
+                TryDelete(Path.Combine(old, LegacyExe));
+                TryDelete(Path.Combine(old, LegacyAppName + ".exe.config"));
+                TryDelete(Path.Combine(old, "error.log"));
+            }
+
+            // 5. 旧缓存目录（WebView2 缓存与阅读方向缓存），搬完再删
+            try
+            {
+                if (Directory.Exists(LegacyCacheDir))
+                {
+                    Directory.Delete(LegacyCacheDir, true);
+                    if (Directory.Exists(LegacyCacheDir))
+                        notes.Add("旧版缓存目录有文件没能删除：" + LegacyCacheDir);
+                }
+            }
+            catch { notes.Add("旧版缓存目录没能删除：" + LegacyCacheDir); }
+
+            if (notes.Count > 0) LegacyResult = string.Join("\n", notes.ToArray());
+        }
+
+        /// <summary>删旧版目录：逐文件删，再按深度从深到浅删空目录（与卸载同一套做法）。</summary>
+        static void DeleteLegacyDir(string dir)
+        {
+            try
+            {
+                foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                    TryDelete(f);
+
+                var dirs = Directory.GetDirectories(dir, "*", SearchOption.AllDirectories);
+                Array.Sort(dirs, delegate(string a, string b) { return b.Length.CompareTo(a.Length); });
+                foreach (var d in dirs)
+                {
+                    try { if (Directory.GetFileSystemEntries(d).Length == 0) Directory.Delete(d); }
+                    catch { }
+                }
+
+                try
+                {
+                    if (Directory.GetFileSystemEntries(dir).Length == 0) Directory.Delete(dir);
+                }
+                catch { }
+            }
+            catch { }
+        }
+
+        /// <summary>删旧版的卸载登记项：四个「范围 × 视图」组合都清一遍。</summary>
+        static void RemoveLegacyUninstallEntries()
+        {
+            foreach (var all in new[] { true, false })
+            {
+                foreach (var view in Views)
+                {
+                    try
+                    {
+                        var hive = all ? RegistryHive.LocalMachine : RegistryHive.CurrentUser;
+                        using (var root = RegistryKey.OpenBaseKey(hive, view))
+                        {
+                            if (root.OpenSubKey(LegacyUninstallSubKey) != null)
+                                root.DeleteSubKeyTree(LegacyUninstallSubKey, false);
+                        }
+                    }
+                    catch { }
+                }
+            }
         }
 
         // ------------------------------------------------------------ 卸载

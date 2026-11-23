@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 程序的自绘错误框 —— 「能不弹就不弹」阶梯里剩下的那一档（规范 §七）：

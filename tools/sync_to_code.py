@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ComicConverter 同步工具：当前工作区（编辑区） -> D:\\Code\\ComicConverter（发布区）
+ComicManager 同步工具：当前工作区（编辑区） -> D:\\Code\\ComicManager（发布区）
 
 用法:
   python tools/sync_to_code.py                 # 预演（默认，不写任何文件）
   python tools/sync_to_code.py --apply         # 真正写入发布区
   python tools/sync_to_code.py --with-build    # 连编译产物一起同步（exe/dll/runtimes/安装包）
-  python tools/sync_to_code.py --dest <路径>   # 覆盖目标目录（默认取环境变量 CC_DEST 或 D:/Code/ComicConverter）
+  python tools/sync_to_code.py --dest <路径>   # 覆盖目标目录（默认取环境变量 CC_DEST 或 D:/Code/ComicManager）
   python tools/sync_to_code.py --force         # 目标被外部改过时仍然覆盖
   python tools/sync_to_code.py --prune         # 发布区里已从源码删除的文件，一并删除（需配合 --apply）
 
@@ -37,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 SRC_ROOT = HERE.parent                      # 编辑区根目录
 STATE_FILE = HERE / ".sync-state.json"
 
-DEFAULT_DEST = r"D:/Code/ComicConverter"
+DEFAULT_DEST = r"D:/Code/ComicManager"
 
 # 源码同步白名单（相对编辑区根）
 SOURCE_FILES = ["README.md", "CHANGELOG.md", "DEVELOPMENT.md", "LICENSE", ".gitignore"]
@@ -102,7 +102,7 @@ def build_files() -> list[tuple[Path, Path]]:
     if setup.is_dir():
         for p in setup.iterdir():
             if p.is_file() and p.name.lower().endswith(".exe"):
-                # 安装器文件名自带版本号（如 ComicConverter-1.0.3-setup.exe），保持原名
+                # 安装器文件名自带版本号（如 ComicManager-2.0.0-setup.exe），保持原名
                 pairs.append((p, Path(p.name)))
     return pairs
 

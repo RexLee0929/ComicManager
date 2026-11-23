@@ -7,7 +7,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>一个系列的阅读方向判定结果。</summary>
     public sealed class DetectResult
@@ -263,7 +263,7 @@ namespace ComicConverter
 
         static readonly string CachePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ComicConverter", "origin-cache.json");
+            "ComicManager", "origin-cache.json");
 
         readonly Dictionary<string, string> _cache =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -667,7 +667,7 @@ namespace ComicConverter
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; } catch { }
 
             var req = (HttpWebRequest)WebRequest.Create(url);
-            req.UserAgent = "ComicConverter/" + Brand.Version + " (+https://github.com/rexlee/ComicConverter)";
+            req.UserAgent = "ComicManager/" + Brand.Version + " (+https://github.com/rexlee/ComicManager)";
             req.Accept = "application/json";
             req.Timeout = TimeoutMs;
             req.ReadWriteTimeout = TimeoutMs;

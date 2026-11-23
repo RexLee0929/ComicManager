@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>本地 HTTP 服务（TcpListener 实现，避免 HttpListener 的 URL ACL 限制）。</summary>
     public static class Api
@@ -47,7 +47,27 @@ namespace ComicConverter
                 {"keep_label", true},
                 {"t2s_label", true},
                 {"limit", 0},
-                {"mode", "convert"}
+                {"mode", "convert"},
+
+                // 刮削页的设置与转换页分开存：两页各自的参数互不干扰
+                {"page", "home"},
+                {"scrape_sources", new object[] { MetaSources.Bangumi, MetaSources.MangaUpdates }},
+                {"scrape_dirs", new object[0]},
+                {"scrape_target", "both"},
+                {"scrape_backup", true},
+                {"scrape_series_json", true},
+                {"scrape_cover", true},
+                {"scrape_cover_overwrite", false},
+                {"scrape_threads", 3},
+                {"scrape_cover_pick", "auto"},
+                {"scrape_cover_width", 800},
+                {"scrape_fill_missing", true},
+                {"scrape_special_number", false},
+                {"scrape_keep_raw", true},
+                {"scrape_rename", false},
+                {"rename_template", "{series}/{id}"},
+                {"last_dir", ""},
+                {"scrape_split_suffix", true}
             };
         }
 
@@ -428,6 +448,11 @@ namespace ComicConverter
                 return;
             }
 
+            if (req.Method == "GET" && req.Path == "/api/scrape/status")
+            {
+                body = MiniJson.Serialize(Scrape.Status());
+                return;
+            }
             if (req.Method == "POST")
             {
                 var data = MiniJson.Parse(req.Body) as Dictionary<string, object>;
@@ -480,10 +505,261 @@ namespace ComicConverter
                     body = "{\"ok\":true}";
                     return;
                 }
+
+                // ------------------------------------------------ 刮削
+                if (req.Path == "/api/scrape/scan")
+                {
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var series = Scrape.Scan(Core.GetList(data, "sources"), null);
+                        var rows = new List<object>();
+                        foreach (var s in series) rows.Add(s.ToJson());
+                        return new Dictionary<string, object> { { "series", rows.ToArray() } };
+                    }));
+                    return;
+                }
+                if (req.Path == "/api/scrape/search")
+                {
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var term = Core.GetStr(data, "term", "");
+                        var srcs = Core.GetList(data, "sources");
+                        if (srcs.Count == 0) srcs = MetaSources.All.ToList();
+                        var list = MetaSources.Search(term, srcs, delegate(string m) { Scrape.Log(m, "w"); });
+                        var rows = new List<object>();
+                        foreach (var c in list) rows.Add(Scrape.CandidateToJson(c));
+                        return new Dictionary<string, object> { { "candidates", rows.ToArray() } };
+                    }));
+                    return;
+                }
+                if (req.Path == "/api/scrape/fetch")
+                {
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var src = Core.GetStr(data, "source", "");
+                        var id = Core.GetStr(data, "id", "");
+                        var term = Core.GetStr(data, "term", "");
+                        var srcs = Core.GetList(data, "sources");
+                        var log = new Action<string>(delegate(string m) { Scrape.Log(m, "i"); });
+
+                        Metadata meta;
+                        if (Core.GetBool(data, "fillMissing", false))
+                            meta = MetaSources.FetchMerged(src, id, term, srcs, log);
+                        else
+                            meta = MetaSources.Fetch(src, id, log);
+
+                        if (meta == null) return new Dictionary<string, object> { { "err", "这个来源没有返回详情" } };
+                        return new Dictionary<string, object> { { "meta", Scrape.MetaToJson(meta) } };
+                    }));
+                    return;
+                }
+
+                if (req.Path == "/api/reveal")
+                {
+                    var path = Core.GetStr(data, "path", "");
+                    body = MiniJson.Serialize(new Dictionary<string, object> { { "ok", Reveal(path) } });
+                    return;
+                }
+                if (req.Path == "/api/scrape/preview")
+                {
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var meta = Scrape.MetaFromJson(data.ContainsKey("meta")
+                            ? data["meta"] as Dictionary<string, object> : null);
+                        var opt = new MetaOptions
+                        {
+                            Target = Core.GetStr(data, "target", "both"),
+                            SplitSeriesVolume = Core.GetBool(data, "splitSuffix", true),
+                            SpecialAsNumber = Core.GetBool(data, "specialNumber", false)
+                        };
+                        int pages = Core.GetInt(data, "pageCount", 0);
+                        int total = Core.GetInt(data, "totalIssues", 0);
+                        return new Dictionary<string, object>
+                        {
+                            {"xml", Scrape.PreviewXml(meta, opt, pages)},
+                            {"seriesJson", Scrape.PreviewSeriesJson(meta, total)},
+                            {"number", meta.Number}, {"volume", meta.Volume}, {"series", meta.Series}
+                        };
+                    }));
+                    return;
+                }
+                if (req.Path == "/api/scrape/write")
+                {
+                    if (Scrape.Running) { code = 409; body = "{\"err\":\"刮削任务还在跑\"}"; return; }
+                    if (_running) { code = 409; body = "{\"err\":\"转换任务还在跑\"}"; return; }
+
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var opt = new MetaWriter.Options
+                        {
+                            Backup = Core.GetBool(data, "backup", true),
+                            WriteSeriesJson = Core.GetBool(data, "seriesJson", true),
+                            WriteCover = Core.GetBool(data, "cover", true),
+                            OverwriteCover = Core.GetBool(data, "coverOverwrite", false),
+                            CoverPick = Core.GetStr(data, "coverPick", "auto"),
+                            CoverMaxWidth = Core.GetInt(data, "coverWidth", 800),
+                            KeepOriginal = Core.GetBool(data, "keepRaw", true),
+                            Meta = new MetaOptions
+                            {
+                                Target = Core.GetStr(data, "target", "both"),
+                                SplitSeriesVolume = Core.GetBool(data, "splitSuffix", true),
+                                SpecialAsNumber = Core.GetBool(data, "specialNumber", false)
+                            }
+                        };
+
+                        var jobs = new List<ScrapeJob>();
+                        var arr = data.ContainsKey("jobs") ? data["jobs"] as object[] : null;
+                        if (arr != null)
+                        {
+                            foreach (var o in arr)
+                            {
+                                var d = o as Dictionary<string, object>;
+                                if (d == null) continue;
+                                var job = new ScrapeJob
+                                {
+                                    Dir = Core.GetStr(d, "dir", ""),
+                                    Series = Core.GetStr(d, "series", ""),
+                                    TotalIssues = Core.GetInt(d, "totalIssues", 0),
+                                    Meta = Scrape.MetaFromJson(d.ContainsKey("meta")
+                                        ? d["meta"] as Dictionary<string, object> : null)
+                                };
+                                var files = d.ContainsKey("files") ? d["files"] as object[] : null;
+                                if (files != null)
+                                {
+                                    foreach (var fo in files)
+                                    {
+                                        var fd = fo as Dictionary<string, object>;
+                                        if (fd == null) continue;
+                                        var path = Core.GetStr(fd, "path", "");
+                                        if (path.Length == 0) continue;
+                                        // 每本自己的号、标题、特殊类型、ISBN：同一系列里番外和正传能分别标
+                                        var pair = Core.GetStr(fd, "volume", "") + "|"
+                                                 + Core.GetStr(fd, "number", "") + "|"
+                                                 + Core.GetStr(fd, "title", "") + "|"
+                                                 + Core.GetStr(fd, "format", "") + "|"
+                                                 + Core.GetStr(fd, "gtin", "");
+                                        job.Files.Add(new KeyValuePair<string, string>(path, pair));
+                                    }
+                                }
+                                if (job.Files.Count > 0) jobs.Add(job);
+                            }
+                        }
+
+                        if (jobs.Count == 0) return new Dictionary<string, object> { { "err", "没有可写入的系列" } };
+                        int threads = Math.Max(1, Math.Min(8, Core.GetInt(data, "threads", 3)));
+                        Scrape.StartWrite(jobs, opt, threads);
+                        return new Dictionary<string, object> { { "ok", true }, { "count", jobs.Count } };
+                    }));
+                    return;
+                }
+                if (req.Path == "/api/scrape/original")
+                {
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var dir = Core.GetStr(data, "dir", "");
+                        string from;
+                        List<Dictionary<string, object>> perFile;
+                        var m = Scrape.ReadOriginal(dir, out from, out perFile);
+                        if (m == null)
+                            return new Dictionary<string, object> { { "err", "这个系列没有可还原的留档（写入时没开「留档原 XML」）" } };
+                        return new Dictionary<string, object>
+                        {
+                            {"meta", Scrape.MetaToJson(m)},
+                            {"file", from},
+                            {"files", perFile.ToArray()}
+                        };
+                    }));
+                    return;
+                }
+
+                if (req.Path == "/api/scrape/rename" || req.Path == "/api/scrape/rename/preview")
+                {
+                    var preview = req.Path.EndsWith("/preview");
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var template = Core.GetStr(data, "template", Renamer.DefaultTemplate);
+                        var all = new List<Renamer.Item>();
+
+                        var arr = data.ContainsKey("jobs") ? data["jobs"] as object[] : null;
+                        if (arr != null)
+                        {
+                            foreach (var o in arr)
+                            {
+                                var d = o as Dictionary<string, object>;
+                                if (d == null) continue;
+                                var dir = Core.GetStr(d, "dir", "");
+                                var series = Core.GetStr(d, "series", "");
+                                var year = Core.GetStr(d, "year", "");
+
+                                var pairs = new List<KeyValuePair<string, string>>();
+                                var files = d.ContainsKey("files") ? d["files"] as object[] : null;
+                                if (files != null)
+                                {
+                                    foreach (var fo in files)
+                                    {
+                                        var fd = fo as Dictionary<string, object>;
+                                        if (fd == null) continue;
+                                        var path = Core.GetStr(fd, "path", "");
+                                        if (path.Length == 0) continue;
+                                        // 顺序：册号 | 卷 | 话 | 单册标题
+                                        pairs.Add(new KeyValuePair<string, string>(path,
+                                            Core.GetStr(fd, "label", "") + "|" +
+                                            Core.GetStr(fd, "volume", "") + "|" +
+                                            Core.GetStr(fd, "number", "") + "|" +
+                                            Core.GetStr(fd, "title", "")));
+                                    }
+                                }
+                                all.AddRange(Renamer.Plan(template, dir, series, year, pairs));
+                            }
+                        }
+
+                        if (all.Count == 0)
+                            return new Dictionary<string, object> { { "err", "没有可重命名的文件" } };
+
+                        if (preview)
+                        {
+                            var rows = new List<object>();
+                            foreach (var it in all)
+                                rows.Add(new Dictionary<string, object>
+                                {
+                                    {"src", it.Src}, {"dst", it.Dst},
+                                    {"same", it.Same},
+                                    {"exists", !it.Same && File.Exists(it.Dst)}
+                                });
+                            return new Dictionary<string, object> { { "rows", rows.ToArray() } };
+                        }
+
+                        var r = Renamer.Apply(all, delegate(string msg, string lv) { Scrape.Log(msg, lv); });
+                        r["err"] = "";
+                        return r;
+                    }));
+                    return;
+                }
+
+                if (req.Path == "/api/scrape/stop")
+                {
+                    Scrape.Stop();
+                    body = "{\"ok\":true}";
+                    return;
+                }
             }
 
             code = 404;
             body = "{\"err\":\"not found\"}";
+        }
+
+        /// <summary>
+        /// 接口兜底：任何异常都变成 {"err": "..."} 交给页面显示。
+        /// 不兜的话请求会静默断开 —— 页面上只剩一个转不动的「查询中…」。
+        /// </summary>
+        static Dictionary<string, object> Guard(Func<Dictionary<string, object>> f)
+        {
+            try { return f(); }
+            catch (Exception ex)
+            {
+                Log("接口出错：" + ex.Message, "e");
+                return new Dictionary<string, object> { { "err", ex.Message } };
+            }
         }
 
         /// <summary>写系统剪贴板。剪贴板需要 STA 线程，这里单开一个再等它结束。</summary>
@@ -513,17 +789,83 @@ namespace ComicConverter
             return ok;
         }
 
+        /// <summary>
+        /// 选目录。这件事**必须回到 WPF 的 UI 线程**做，而且要给 Owner：
+        /// 请求是在后台线程上处理的，WinForms 的文件夹框要求 STA，从后台线程直接 ShowDialog 会抛异常；
+        /// 就算侥幸弹出来，没有 Owner 也会掉到主窗口后面去 —— 用户看到的就是「点浏览没反应」。
+        /// </summary>
         static string PickFolder()
+        {
+            var app = System.Windows.Application.Current;
+            if (app == null) return "ERR:程序界面还没准备好";
+
+            string result = "";
+            try
+            {
+                app.Dispatcher.Invoke(new Action(delegate
+                {
+                    try
+                    {
+                        using (var dlg = new System.Windows.Forms.FolderBrowserDialog())
+                        {
+                            dlg.Description = "选择目录";
+                            dlg.ShowNewFolderButton = true;
+
+                            // 根节点定在「此电脑」：默认的桌面/文档树里大半是用不上的，
+                            // 漫画库多半在别的盘，多一层层点进去很烦。
+                            try { dlg.RootFolder = Environment.SpecialFolder.MyComputer; } catch { }
+
+                            // 停在上次选过的目录；目录不在了就当没记忆
+                            var cfg = LoadConfig();
+                            var last = cfg.ContainsKey("last_dir") ? Convert.ToString(cfg["last_dir"]) : "";
+                            if (!string.IsNullOrEmpty(last) && Directory.Exists(last)) dlg.SelectedPath = last;
+
+                            var owner = app.MainWindow == null ? null : new OwnerHandle(app.MainWindow);
+                            var r = owner == null ? dlg.ShowDialog() : dlg.ShowDialog(owner);
+                            if (r == System.Windows.Forms.DialogResult.OK)
+                            {
+                                result = dlg.SelectedPath;
+                                cfg["last_dir"] = result;
+                                SaveConfig(cfg);
+                            }
+                            else result = "";
+                        }
+                    }
+                    catch (Exception ex) { result = "ERR:" + ex.Message; }
+                }));
+            }
+            catch (Exception ex) { return "ERR:" + ex.Message; }
+            return result;
+        }
+
+        /// <summary>把 WPF 窗口包成 WinForms 认的 Owner，保证对话框压在主窗口上、模态跟着主窗口。</summary>
+        sealed class OwnerHandle : System.Windows.Forms.IWin32Window
+        {
+            readonly IntPtr _h;
+            public OwnerHandle(System.Windows.Window w)
+            {
+                _h = new System.Windows.Interop.WindowInteropHelper(w).Handle;
+            }
+            public IntPtr Handle { get { return _h; } }
+        }
+
+        /// <summary>在资源管理器里定位一个文件/目录（选中漫画路径用）。</summary>
+        public static bool Reveal(string path)
         {
             try
             {
-                var dlg = new System.Windows.Forms.FolderBrowserDialog();
-                dlg.Description = "选择目录";
-                dlg.ShowNewFolderButton = true;
-                var r = dlg.ShowDialog();
-                return r == System.Windows.Forms.DialogResult.OK ? dlg.SelectedPath : "";
+                if (File.Exists(path))
+                    System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + path + "\"");
+                else if (Directory.Exists(path))
+                    System.Diagnostics.Process.Start("explorer.exe", "\"" + path + "\"");
+                else return false;
+                return true;
             }
-            catch (Exception ex) { return "ERR:" + ex.Message; }
+            catch (Exception ex)
+            {
+                App.Dump("打开路径失败 " + path + "：" + ex.Message);
+                return false;
+            }
         }
     }
 }

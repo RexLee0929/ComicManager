@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>已有 CBZ 在 Kavita / Komga 命名规则间互转，图片字节不动。</summary>
     public static class Repack

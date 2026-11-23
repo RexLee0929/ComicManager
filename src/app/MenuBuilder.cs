@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 把 AppMenu 的数据表变成真实的 MenuItem。

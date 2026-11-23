@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>繁转简：基于 OpenCC 的纯文本词表，最长匹配。不依赖任何外部库。</summary>
     public static class Chinese
@@ -49,7 +49,7 @@ namespace ComicConverter
         static string Res(string name)
         {
             var asm = Assembly.GetExecutingAssembly();
-            var resName = "ComicConverter.Data." + name;
+            var resName = "ComicManager.Data." + name;
             using (var s = asm.GetManifestResourceStream(resName))
             {
                 if (s == null) return null;

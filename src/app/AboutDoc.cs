@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
 
-namespace ComicConverter
+namespace ComicManager
 {
     /// <summary>
     /// 「帮助 → 关于」的内容源：src/app/ABOUT.md（EmbeddedResource）。

@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>卸载向导：确认 → [正在运行] → 卸载中 → 完成。外观与安装向导同一套。</summary>
     public class UninstallForm : WizardShell

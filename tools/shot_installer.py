@@ -157,7 +157,7 @@ def artifacts_setup(root):
     import re
     with open(os.path.join(root, "src", "version.props"), encoding="utf-8") as f:
         v = re.search(r"<Version>([^<]+)</Version>", f.read()).group(1)
-    return os.path.join(root, "artifacts", "ComicConverter-%s-setup.exe" % v)
+    return os.path.join(root, "artifacts", "ComicManager-%s-setup.exe" % v)
 
 
 def main():
@@ -170,7 +170,7 @@ def main():
     proc = subprocess.Popen([exe])
     hwnd = None
     for _ in range(80):
-        hwnd = user32.FindWindowW(None, "ComicConverter 安装")
+        hwnd = user32.FindWindowW(None, "ComicManager 安装")
         if hwnd:
             break
         time.sleep(0.1)
@@ -185,7 +185,7 @@ def main():
         if i == 3:
             edit = find_child(hwnd, "EDIT")
             if edit:
-                target = os.path.join(tempfile.gettempdir(), "cc-shot", "ComicConverter")
+                target = os.path.join(tempfile.gettempdir(), "cc-shot", "ComicManager")
                 user32.SetWindowTextW(edit, target)
                 time.sleep(0.2)
 

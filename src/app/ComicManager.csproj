@@ -7,8 +7,8 @@
     <TargetFramework>net48</TargetFramework>
     <UseWPF>true</UseWPF>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>ComicConverter</AssemblyName>
-    <RootNamespace>ComicConverter</RootNamespace>
+    <AssemblyName>ComicManager</AssemblyName>
+    <RootNamespace>ComicManager</RootNamespace>
     <DebugType>none</DebugType>
     <Deterministic>true</Deterministic>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -32,7 +32,7 @@
     <EmbeddedResource Include="Data\*.txt" />
     <EmbeddedResource Include="Web\index.html" />
     <!-- 「帮助 → 关于」的文案源：占位符 {NAME}/{VERSION}/{AUTHOR}/{TAGLINE} 启动时替换 -->
-    <EmbeddedResource Include="ABOUT.md" LogicalName="ComicConverter.ABOUT.md" />
+    <EmbeddedResource Include="ABOUT.md" LogicalName="ComicManager.ABOUT.md" />
   </ItemGroup>
 
 </Project>

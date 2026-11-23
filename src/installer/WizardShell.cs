@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>
     /// 向导外壳：左侧色带 + 右侧白底内容区 + 底部按钮栏。

@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-namespace ComicConverterSetup
+namespace ComicManagerSetup
 {
     /// <summary>
     /// 自绘进度条。系统 ProgressBar 的颜色来自系统主题（绿），不跟派生色走，
