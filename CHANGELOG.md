@@ -4,6 +4,27 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.0] - 2026-11-25
+
+### 新增
+
+- **「Kavita Custom」目标档**（刮削页默认）：`series.json` 改按 Kavita Custom 的侧车格式写 12 类系列字段——排序名 / 译名 / 简介 / 状态 / 年份 / 语言 / 分级 / 出版社 / 类型 / 标签 / 人员 / 全部外部链接，优先级高于包内 ComicInfo；Kavita 原版与 Komga 档仍写 Mylar 格式
+- **「不写 Number」开关**（Kavita 系档位默认开）：正传只写卷（`Volume`），话只写话（`Number`），两个字段不再互相抄；番外的卷号占 0、话号按原顺序保留用于排序。单册面板同步置灰不落盘的字段，预览里能核对真实写入值
+- **「番外卷号占 0」独立开关**（Kavita Custom 档默认开）：番外的 `Volume` 写成 `0` 而不是清空，关掉则回到清空行为
+- 写入后补齐外部 id 时，`series.json` 里的链接会同步更新（只动链接，其余字段保留）
+
+### 变更
+
+- 刮削页写入目标改为三档：Kavita Custom / Kavita / Komga；「双兼容」档只在转换页保留，旧配置里存的刮削档位自动迁移
+- `series.json` 改为必写，去掉开关
+- 「写前备份 `.bak`」默认关闭，要备份手动打开；「留档原 XML」改为总是保留，去掉开关，「元数据回退」不受影响
+- 拆卷号后缀与番外小数号改由目标档位预设，不再单独设开关
+
+### 修复
+
+- 「不写 Number」开着时，盘上残留的 `Number` 写不掉：跳过判定把旧值渲染错了，误判「无变化」直接跳过
+- 刮削预览里 Web 链接按空格拆行，逗号分隔的链接显示不全（现按逗号 / 空格都能拆）
+
 ## [2.0.0] - 2026-11-23
 
 ### 新增
@@ -151,6 +172,7 @@
 - **断点续跑**：目标已存在记「跳过」，默认 6 并发（可 1–32）
 - **安装 / 卸载向导**：可选「仅为我安装」（无需管理员）或「为所有用户安装」（请求一次 UAC）
 
+[2.1.0]: https://github.com/RexLee0929/ComicManager/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/RexLee0929/ComicManager/compare/v1.0.7...v2.0.0
 [1.0.7]: https://github.com/RexLee0929/ComicManager/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/RexLee0929/ComicManager/compare/v1.0.5...v1.0.6

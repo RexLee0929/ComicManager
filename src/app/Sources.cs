@@ -4,9 +4,28 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace ComicManager
 {
+    /// <summary>一卷的 ISBN。来源只按系列给一条时，靠它把书号发到每一本上。</summary>
+    public sealed class VolumeIsbn
+    {
+        public string Volume = "";
+        public string Title = "";
+        public string Gtin = "";
+
+        /// <summary>这一卷（单行本子条目）自己的页面地址，写进那一本的 Web。</summary>
+        public string Url = "";
+    }
+
+    /// <summary>其他数据库里的同一条目：名字 + id + 链接（链接要写进 Notes 给 Kavita 认）。</summary>
+    public sealed class ExternalId
+    {
+        public string Name = "";
+        public string Id = "";
+        public string Url = "";
+    }
     /// <summary>一条搜索结果。列表里只显示标题/年份/来源，详情等选中后再拉。</summary>
     public sealed class Candidate
     {
@@ -44,6 +63,53 @@ namespace ComicManager
     ///   mangaupdates 英文与日文条目最全，作者、出版社、年份稳
     ///   mangadex    封面质量最好，简介多语言，条目标题语言最杂
     /// </summary>
+    /// <summary>外部数据库 id 的查询结果。只带 id，不碰别的字段。</summary>
+    public sealed class ExternalIdResult
+    {
+        public string AniListId = "", MalId = "", MangaBakaId = "", HardcoverId = "",
+                      ComicVineId = "", MetronId = "", ComicBookRoundupId = "";
+        public string Matched = "";
+        public double Score;
+        public readonly List<string> Titles = new List<string>();
+        public readonly List<string> Missed = new List<string>();
+
+        public bool Any
+        {
+            get
+            {
+                return AniListId.Length + MalId.Length + MangaBakaId.Length
+                     + HardcoverId.Length + ComicVineId.Length + MetronId.Length
+                     + ComicBookRoundupId.Length > 0;
+            }
+        }
+
+        public string Describe()
+        {
+            var parts = new List<string>();
+            if (AniListId.Length > 0) parts.Add("AniList " + AniListId);
+            if (MalId.Length > 0) parts.Add("MAL " + MalId);
+            if (MangaBakaId.Length > 0) parts.Add("MangaBaka " + MangaBakaId);
+            if (HardcoverId.Length > 0) parts.Add("Hardcover " + HardcoverId);
+            if (ComicVineId.Length > 0) parts.Add("ComicVine " + ComicVineId);
+            if (MetronId.Length > 0) parts.Add("Metron " + MetronId);
+            if (ComicBookRoundupId.Length > 0) parts.Add("CBR " + ComicBookRoundupId);
+            return string.Join("、", parts.ToArray());
+        }
+
+        /// <summary>只把查到的 id 写进元数据，原有字段一律不动。</summary>
+        public void ApplyTo(Metadata m)
+        {
+            if (m == null) return;
+            if (AniListId.Length > 0) m.AniListId = AniListId;
+            if (MalId.Length > 0) m.MalId = MalId;
+            if (MangaBakaId.Length > 0) m.MangaBakaId = MangaBakaId;
+            if (HardcoverId.Length > 0) m.HardcoverId = HardcoverId;
+            if (ComicVineId.Length > 0) m.ComicVineId = ComicVineId;
+            if (MetronId.Length > 0) m.MetronId = MetronId;
+            if (ComicBookRoundupId.Length > 0) m.ComicBookRoundupId = ComicBookRoundupId;
+        }
+    }
+
     public static class MetaSources
     {
         public const string Bangumi = "bangumi";
@@ -234,6 +300,252 @@ namespace ComicManager
             return m;
         }
 
+        // ------------------------------------------------------------ 每卷 ISBN
+        static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<VolumeIsbn>> VolIsbnCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, List<VolumeIsbn>>();
+
+        /// <summary>
+        /// 取一个系列里每卷的 ISBN。
+        /// Bangumi 的系列条目（书籍、册数 N）下面挂着 N 个「单行本」子条目，每个子条目的
+        /// infobox 里有自己的 ISBN —— 这是唯一能拿到「每卷一条书号」的地方；
+        /// 系列条目本身通常连 ISBN 字段都没有（多卷本本来就没有系列级 ISBN）。
+        /// </summary>
+        public static List<VolumeIsbn> FetchVolumeIsbns(string source, string id, Action<string> log)
+        {
+            var res = new List<VolumeIsbn>();
+            if (string.IsNullOrEmpty(id)) return res;
+            if (source != Bangumi) return res;      // 只有 Bangumi 给单行本级 ISBN
+
+            List<VolumeIsbn> cached;
+            if (VolIsbnCache.TryGetValue(id, out cached)) return cached;
+
+            var txt = Net.GetText("https://api.bgm.tv/v0/subjects/" + id + "/subjects", 15000);
+            if (string.IsNullOrEmpty(txt)) return res;
+
+            var vols = new List<KeyValuePair<string, string>>();   // 卷号 → 子条目 id
+            foreach (var it in Objs(MiniJson.Parse(txt)))
+            {
+                var relation = S(it, "relation");
+                if (S(it, "type") != "1" || relation.IndexOf("单行本", StringComparison.Ordinal) < 0) continue;
+
+                var v = VolumeFromName(S(it, "name"));
+                var sid = S(it, "id");
+                if (v.Length == 0 || sid.Length == 0) continue;
+                if (!vols.Any(x => x.Key == v)) vols.Add(new KeyValuePair<string, string>(v, sid));
+            }
+            if (vols.Count == 0) { VolIsbnCache[id] = res; return res; }
+
+            var got = new Dictionary<string, VolumeIsbn>();
+            int idx = -1;
+            var threads = new List<Thread>();
+            for (int t = 0; t < Math.Min(4, vols.Count); t++)
+            {
+                var th = new Thread(delegate()
+                {
+                    while (true)
+                    {
+                        int i = Interlocked.Increment(ref idx);
+                        if (i >= vols.Count) break;
+                        var gtin = FetchOneIsbn(vols[i].Value);
+                        // 就算这一卷没有 ISBN，链接也有用：单册页要能跳到它自己的条目
+                        var one = new VolumeIsbn
+                        {
+                            Volume = vols[i].Key,
+                            Gtin = gtin,
+                            Url = "https://bgm.tv/subject/" + vols[i].Value
+                        };
+                        if (one.Gtin.Length == 0 && one.Url.Length == 0) continue;
+                        lock (got) got[vols[i].Key] = one;
+                    }
+                });
+                th.IsBackground = true;
+                threads.Add(th);
+                th.Start();
+            }
+            foreach (var th in threads) th.Join();
+
+            foreach (var kv in got) res.Add(kv.Value);
+            res.Sort(delegate(VolumeIsbn a, VolumeIsbn b)
+            {
+                int x, y;
+                int.TryParse(a.Volume, out x); int.TryParse(b.Volume, out y);
+                return x.CompareTo(y);
+            });
+
+            if (log != null)
+            {
+                int withIsbn = res.Count(x => x.Gtin.Length > 0);
+                log("Bangumi 单行本里查到 " + withIsbn + " 条 ISBN、" + res.Count
+                    + " 条单册链接（共 " + vols.Count + " 卷）");
+            }
+            VolIsbnCache[id] = res;
+            return res;
+        }
+
+        static string FetchOneIsbn(string subjectId)
+        {
+            var txt = Net.GetText("https://api.bgm.tv/v0/subjects/" + subjectId, 15000);
+            if (string.IsNullOrEmpty(txt)) return "";
+            var d = MiniJson.Parse(txt) as Dictionary<string, object>;
+            if (d == null) return "";
+
+            string isbn10 = "";
+            foreach (var box in Objs(Get(d, "infobox")))
+            {
+                var key = S(box, "key");
+                var val = InfoboxValue(Get(box, "value"));
+                if (IndexOfIgnore(key, "isbn-10") >= 0) { isbn10 = FirstDigits(val); continue; }
+                if (IndexOfIgnore(key, "isbn") >= 0)
+                {
+                    var d13 = FirstDigits(val);
+                    if (d13.Length == 13) return d13;
+                    if (d13.Length == 10) return Isbn10To13(d13);
+                }
+            }
+            return isbn10.Length == 10 ? Isbn10To13(isbn10) : "";
+        }
+
+        /// <summary>ISBN-10 → ISBN-13（978 + 前 9 位 + 重算校验位）。ComicInfo 的 GTIN 按 13 位存。</summary>
+        static string Isbn10To13(string isbn10)
+        {
+            var d = Regex.Replace(isbn10 ?? "", "[^0-9Xx]", "");
+            if (d.Length != 10) return isbn10 ?? "";
+            var core = "978" + d.Substring(0, 9);
+            int sum = 0;
+            for (int i = 0; i < 12; i++) sum += (core[i] - '0') * (i % 2 == 0 ? 1 : 3);
+            return core + ((10 - sum % 10) % 10);
+        }
+
+        /// <summary>单行本条目名里的卷号：「… (03)」「… 3巻」「… 第3巻」。</summary>
+        static string VolumeFromName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "";
+            var m = Regex.Match(name, @"[\(（]\s*0*(\d{1,3})\s*[\)）]\s*$");
+            if (!m.Success) m = Regex.Match(name, @"第?\s*0*(\d{1,3})\s*[巻卷册冊]\s*$");
+            if (!m.Success) m = Regex.Match(name, @"(\d{1,3})\s*$");
+            if (!m.Success) return "";
+            int v;
+            if (!int.TryParse(m.Groups[1].Value, out v) || v <= 0) return "";
+            return v.ToString(CultureInfo.InvariantCulture);
+        }
+
+        // ------------------------------------------------------------ 额外数据库 id
+        /// <summary>
+        /// 外部数据库 id：AniList / MAL / MangaBaka 能直接查（公开接口，不要 key），
+        /// Hardcover / ComicVine / Metron / Comic Book Roundup 要注册 key，这里查不了。
+        ///
+        /// 为什么要单独一步：Kavita 的「外部元数据」显示的是 AniList / MAL / ComicVine 这些库的 id，
+        /// 而 Bangumi / MangaUpdates / MangaDex 三个源里根本没有这些数字 ——
+        /// 只能拿已经刮到的「原名 / 英文名」去对应的库里反查。
+        /// </summary>
+        public static ExternalIdResult FindExternalIds(List<string> terms, Action<string> log)
+        {
+            var res = new ExternalIdResult();
+            var list = new List<string>();
+            foreach (var t in terms)
+            {
+                var s = (t ?? "").Trim();
+                if (s.Length > 0 && !list.Contains(s)) list.Add(s);
+            }
+            if (list.Count == 0) return res;
+
+            LookupAniList(list, res, log);
+            LookupMangaBaka(list, res, log);
+
+            res.Missed.Add("Hardcover（要 API key）");
+            res.Missed.Add("ComicVine（要 API key）");
+            res.Missed.Add("Metron（要账号）");
+            res.Missed.Add("Comic Book Roundup（无公开接口）");
+
+            if (log != null)
+                log(res.Any ? "外部 id：" + res.Describe() : "外部 id：没找到");
+            return res;
+        }
+
+        const string AniListQuery =
+            "query($s:String){Page(perPage:6){media(search:$s,type:MANGA){id idMal "
+            + "title{romaji english native}}}}";
+
+        /// <summary>AniList 公开 GraphQL，不用 key；顺带把 idMal 带回来，MAL 那条也就有了。</summary>
+        static void LookupAniList(List<string> terms, ExternalIdResult res, Action<string> log)
+        {
+            foreach (var term in terms)
+            {
+                if (!string.IsNullOrEmpty(res.AniListId)) break;
+                try
+                {
+                    var body = "{\"query\":" + MiniJson.Serialize(AniListQuery)
+                             + ",\"variables\":{\"s\":" + MiniJson.Serialize(term) + "}}";
+                    var txt = Net.PostJson("https://graphql.anilist.co", body, 20000);
+                    if (string.IsNullOrEmpty(txt)) continue;
+
+                    var root = MiniJson.Parse(txt) as Dictionary<string, object>;
+                    var page = Get(Get(root, "data"), "Page");
+                    double best = 0; Dictionary<string, object> pick = null;
+                    foreach (var it in Objs(Get(page, "media")))
+                    {
+                        var t = Get(it, "title");
+                        var score = Score(term, S(t, "romaji"), S(t, "english"), S(t, "native"));
+                        if (score > best) { best = score; pick = it; }
+                    }
+                    if (pick == null || best < 0.72) continue;
+
+                    res.AniListId = S(pick, "id");
+                    res.MalId = S(pick, "idMal");
+                    var title = Get(pick, "title");
+                    res.Titles.Add(S(title, "romaji"));
+                    res.Titles.Add(S(title, "english"));
+                    res.Titles.Add(S(title, "native"));
+                    if (res.Matched.Length == 0) res.Matched = S(title, "english");
+                    if (best > res.Score) res.Score = best;
+                    if (log != null)
+                        log("AniList 命中：" + S(title, "romaji") + "（" + Math.Round(best * 100) + "%）");
+                }
+                catch (Exception ex) { if (log != null) log("查 AniList 失败：" + ex.Message); }
+            }
+        }
+
+        /// <summary>MangaBaka 公开 REST（旧域名 api.mangabaka.dev 已停用，走 .org）。</summary>
+        static void LookupMangaBaka(List<string> terms, ExternalIdResult res, Action<string> log)
+        {
+            foreach (var term in terms)
+            {
+                if (!string.IsNullOrEmpty(res.MangaBakaId)) break;
+                try
+                {
+                    var url = "https://api.mangabaka.org/v1/series/search?limit=6&q=" + Uri.EscapeDataString(term);
+                    var txt = Net.GetText(url, 20000);
+                    if (string.IsNullOrEmpty(txt)) continue;
+
+                    var root = MiniJson.Parse(txt) as Dictionary<string, object>;
+                    double best = 0; Dictionary<string, object> pick = null;
+                    foreach (var it in Objs(Get(root, "data")))
+                    {
+                        var alts = new List<string>();
+                        alts.Add(S(it, "native_title"));
+                        var sec = Get(it, "secondary_titles") as Dictionary<string, object>;
+                        if (sec != null)
+                            foreach (var kv in sec)
+                                foreach (var one in Objs(kv.Value))
+                                    alts.Add(S(one, "title"));
+                        var score = Score(term, S(it, "title"), S(it, "romanized_title"),
+                                          string.Join("|", alts.ToArray()));
+                        if (score > best) { best = score; pick = it; }
+                    }
+                    if (pick == null || best < 0.72) continue;
+
+                    res.MangaBakaId = S(pick, "id");
+                    res.Titles.Add(S(pick, "title"));
+                    res.Titles.Add(S(pick, "native_title"));
+                    if (res.Matched.Length == 0) res.Matched = S(pick, "title");
+                    if (best > res.Score) res.Score = best;
+                    if (log != null)
+                        log("MangaBaka 命中：" + S(pick, "title") + "（" + Math.Round(best * 100) + "%）");
+                }
+                catch (Exception ex) { if (log != null) log("查 MangaBaka 失败：" + ex.Message); }
+            }
+        }
+
         /// <summary>
         /// 当前还空着的字段（带中文名和取值器），用来做两件事：
         /// 判断要不要换词再搜、以及补完之后告诉用户具体补了什么。
@@ -288,25 +600,36 @@ namespace ComicManager
         }
 
         /// <summary>
-        /// 展示名与原始名：有译名就展示译名、原始名留在 LocalizedSeries；
-        /// 没有译名（或译名与原名相同）就只用原名，LocalizedSeries 留空 —— 「非译名的不算」。
+        /// 三种名字各留一份：中文译名 / 原名 / 英文名。
+        /// 显示名取中文优先 —— 这是你自己看的名字；另外两个库里查不到中文名时还要靠它们反查，
+        /// 所以不能只留一个。
         /// </summary>
-        static void SetNames(Metadata m, string translated, string original, string fallback)
+        static void SetNames(Metadata m, string zh, string original, string english, string fallback)
         {
-            var t = (translated ?? "").Trim();
-            var o = (original ?? "").Trim();
-            if (t.Length > 0 && o.Length > 0 && t != o)
+            m.SeriesChinese = (zh ?? "").Trim();
+            m.SeriesOriginal = (original ?? "").Trim();
+            m.SeriesEnglish = (english ?? "").Trim();
+
+            var display = m.SeriesChinese.Length > 0 ? m.SeriesChinese
+                        : (m.SeriesOriginal.Length > 0 ? m.SeriesOriginal
+                        : (m.SeriesEnglish.Length > 0 ? m.SeriesEnglish : (fallback ?? "")));
+            m.Series = display;
+            // Kavita 的本地化名：显示的不是中文时把中文名放这里；两者相同就留空
+            m.LocalizedSeries = (m.SeriesChinese.Length > 0 && m.SeriesChinese != display) ? m.SeriesChinese : "";
+            m.SeriesSort = display;
+        }
+
+        /// <summary>纯拉丁字母（英文 / 罗马字），用来把「英文名」从别名堆里挑出来。</summary>
+        static bool IsLatinTitle(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            bool any = false;
+            foreach (var c in s)
             {
-                m.Series = t;
-                m.LocalizedSeries = o;
+                if (c >= '\u0250') return false;      // 假名、汉字、谚文都不算
+                if (char.IsLetter(c)) any = true;
             }
-            else
-            {
-                m.Series = o.Length > 0 ? o : (t.Length > 0 ? t : fallback);
-                m.LocalizedSeries = "";
-            }
-            if (string.IsNullOrEmpty(m.Series)) m.Series = fallback ?? "";
-            m.SeriesSort = m.Series;
+            return any;
         }
 
         static bool HasCjk(string s)
@@ -355,7 +678,7 @@ namespace ComicManager
             var m = new Metadata { SourceName = LabelOf(Bangumi), SourceId = id };
             var nameCn = S(d, "name_cn");
             var name = S(d, "name");
-            SetNames(m, nameCn, name, name);
+            SetNames(m, nameCn, name, "", name);
             m.Summary = Clean(S(d, "summary"));
             m.Year = YearOf(S(d, "date"));
             m.CoverUrl = S(Get(d, "images"), "large");
@@ -410,17 +733,25 @@ namespace ComicManager
                 else if (key == "发售日" || key == "连载开始") { if (string.IsNullOrEmpty(m.Year)) m.Year = YearOf(val); }
                 else if (key == "别名")
                 {
+                    // 别名里往往藏着英文名（有的作品 Bangumi 只在别名里写英文），
+                    // 那是去 AniList / MangaBaka 反查时命中率最高的一个词，单独留下来
                     noise.AddRange(SplitWords(val));
-                    if (string.IsNullOrEmpty(m.LocalizedSeries)) m.LocalizedSeries = val;
+                    foreach (var a in SplitWords(val))
+                    {
+                        var s = a.Trim();
+                        if (s.Length < 2) continue;
+                        if (IsLatinTitle(s)) { if (string.IsNullOrEmpty(m.SeriesEnglish)) m.SeriesEnglish = s; }
+                        else if (HasKana(s)) { if (string.IsNullOrEmpty(m.SeriesOriginal)) m.SeriesOriginal = s; }
+                    }
                 }
                 else if (key == "册数" || key == "卷数") { m.Count = FirstInt(val); }
                 else if (key == "话数") { if (string.IsNullOrEmpty(m.Count)) m.Count = FirstInt(val); }
             }
 
-            // 标签：Bangumi 的 tags 带 count，按热度取前若干个。前一半进 Genre，后一半进 Tags ——
-            // Komga 用 Genre 做系列分类，Kavita 的筛选看的是 Tags，两边都喂一点。
-            // Bangumi 的 tags 里混着出版社、作者、别名、纯数字，这些不是分类，要剔掉，
-            // 否则「集英社」「尾田栄一郎」会跑到类型里，筛选面板立刻变成垃圾场。
+            // 标签：全量保留，但要分「类型」和「标签」两批 —— 两边同值就不是分类了。
+            // Bangumi 的标签没有类别信息，只能靠词表分：命中类型词表的进 Genre，
+            // 其余（作品名、梗、状态、卷数、出版社…）进 Tags。词表宁全勿缺：
+            // 漏一个只是掉进 Tags，不会丢，也不会像以前「前 6 个算类型」那样把无关词硬塞进分类。
             var tags = new List<string>();
             foreach (var t in Objs(Get(d, "tags")))
             {
@@ -429,19 +760,96 @@ namespace ComicManager
             }
             if (tags.Count > 0)
             {
-                int g = Math.Min(6, tags.Count);
-                m.Genre = string.Join(", ", tags.Take(g).ToArray());
-                if (tags.Count > g) m.Tags = string.Join(", ", tags.Skip(g).Take(10).ToArray());
+                var genre = new List<string>();
+                var rest = new List<string>();
+                foreach (var t in tags)
+                    (GenreWords.Contains(t.Trim()) ? genre : rest).Add(t);
+                m.Genre = string.Join(", ", genre.ToArray());
+                m.Tags = string.Join(", ", rest.ToArray());
             }
 
             var volumes = S(d, "volumes");
             if (string.IsNullOrEmpty(m.Count) && volumes != "0") m.Count = volumes;
+
+            // 合集/书单：infobox 的「系列」只有一部分条目填过。
+            // 没填就按关联条目推：单行本取「系列」关系，主条目取同 IP 的动画/游戏名。
+            if (string.IsNullOrEmpty(m.SeriesGroup)) m.SeriesGroup = BangumiSeriesGroup(id, m);
 
             // 语言不猜：LanguageISO 表示「你收藏的这一本是什么语言」，
             // 而 Bangumi 记的是原作的语言。中文版漫画被标成 ja，Komga 里筛选就全乱了。
             // 语言来源只有两个：包内已有的值、用户在下拉里选的。
             Finalize(m);
             return m;
+        }
+
+        /// <summary>
+        /// 合集 / 书单的名字。两级判断：
+        /// 1. 关联里有 relation=系列 的（单行本 → 主系列），直接拿来用；
+        /// 2. 否则在关联的**动画 / 游戏**条目里挑「IP 主名」：必须是当前系列名的前缀，
+        ///    且不能跟当前作品同名（改编游戏的标题常和漫画一模一样，那不叫合集）。
+        ///    多个候选取最短的 —— 「新世纪福音战士」比「新世纪福音战士 钢铁的女朋友」更像合集名。
+        /// 都不满足就留空，不硬凑一个错合集。
+        /// </summary>
+        static string BangumiSeriesGroup(string id, Metadata m)
+        {
+            var txt = Net.GetText("https://api.bgm.tv/v0/subjects/" + id + "/subjects", 15000);
+            if (string.IsNullOrEmpty(txt)) return "";
+            var list = MiniJson.Parse(txt) as object[];
+            if (list == null) return "";
+
+            // 1. 明确的「系列」关系
+            foreach (var o in list)
+            {
+                var d = o as Dictionary<string, object>;
+                if (d == null) continue;
+                if (IndexOfIgnore(S(d, "relation"), "系列") < 0) continue;
+                var n = S(d, "name_cn");
+                if (n.Length == 0) n = S(d, "name");
+                if (n.Length > 0) return n;
+            }
+
+            // 2. IP 主名。只认动画(2) / 游戏(4)：书籍类多半是单行本或公式书，拿来当合集必错。
+            var selves = new List<string>();
+            foreach (var s in new[] { m.Series, m.SeriesChinese, m.SeriesOriginal })
+            {
+                var v = (s ?? "").Trim();
+                if (v.Length > 0 && !selves.Contains(v)) selves.Add(v);
+            }
+
+            string best = "";
+            foreach (var o in list)
+            {
+                var d = o as Dictionary<string, object>;
+                if (d == null) continue;
+                var type = S(d, "type");
+                if (type != "2" && type != "4") continue;
+
+                var n = S(d, "name_cn");
+                if (n.Length == 0) n = S(d, "name");
+                if (n.Length == 0) continue;
+
+                if (!IsIpHolder(n, selves)) continue;
+                if (best.Length == 0 || n.Length < best.Length) best = n;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// 候选名是不是「当前作品的上级 IP」：当前系列名以它开头，且比它长。
+        /// 「新世纪福音战士」是「新世纪福音战士 碇真嗣育成计划」的前缀 → 可以当合集；
+        /// 同名条目（改编游戏）归一化后与当前名等长 → 不算。
+        /// </summary>
+        static bool IsIpHolder(string candidate, List<string> selves)
+        {
+            var c = Norm(candidate);
+            if (c.Length < 2) return false;
+            foreach (var s in selves)
+            {
+                var v = Norm(s);
+                if (v.Length <= c.Length) continue;
+                if (v.StartsWith(c, StringComparison.Ordinal)) return true;
+            }
+            return false;
         }
 
         /// <summary>从「ISBN 978-4-04-…」这类值里抠出数字（ComicInfo 的 GTIN 只认纯数字）。</summary>
@@ -496,6 +904,59 @@ namespace ComicManager
         {
             return (s ?? "").Split(new[] { ',', '/', '、', '，', '|' }, StringSplitOptions.RemoveEmptyEntries);
         }
+
+        /// <summary>
+        /// 类型词表：命中这里的标签算「类型」进 Genre，其余算「标签」进 Tags。
+        /// Bangumi 的标签没有类别字段，只能靠词表分。宁全勿缺：漏掉的只是掉进 Tags，
+        /// 不会丢，也不会像旧版「前 6 个算类型」那样把「全18卷」「补标」硬塞进分类。
+        /// 简繁都收，日文常用写法也收 —— 同一个条目不同人打的字不一样。
+        /// </summary>
+        static readonly HashSet<string> GenreWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // 大方向
+            "剧情", "故事", "叙事", "群像", "热血", "黑暗", "虐心", "黑深残", "励志", "燃",
+            // 恋爱
+            "恋爱", "戀愛", "恋愛", "爱情", "愛情", "純愛", "纯爱", "青梅竹马", "三角恋", "后宫", "ハーレム", "逆后宫",
+            // 喜剧
+            "喜剧", "喜劇", "搞笑", "幽默", "コメディ", "恶搞", "惡搞", "吐槽", "四格",
+            // 校园 / 青春
+            "校园", "校園", "學園", "学園", "学校", "青春", "社团", "社團",
+            // 日常 / 治愈
+            "日常", "治愈", "治癒", "空氣系", "空气系", "温馨", "溫馨",
+            // 奇幻
+            "奇幻", "ファンタジー", "魔法", "魔法少女", "异世界", "異世界", "转生", "轉生", "妖怪", "怪物",
+            "神话", "神話", "恶魔", "惡魔", "吸血鬼", "僵尸", "喪屍", "丧尸", "龙", "龍",
+            // 科幻
+            "科幻", "SF", "赛博朋克", "賽博龐克", "废土", "廢土", "末日", "末世", "未来", "未來", "时空", "時空",
+            // 机甲 / 战斗
+            "机战", "機戰", "机器人", "機器人", "机甲", "機甲", "メカ", "战斗", "戰鬥", "バトル", "动作", "動作",
+            "アクション", "格斗", "格鬥", "武斗", "武侠", "武俠",
+            // 冒险
+            "冒险", "冒險", "冒険", "探险", "探險",
+            // 悬疑 / 恐怖
+            "悬疑", "懸疑", "推理", "ミステリ", "侦探", "偵探", "惊悚", "驚悚", "サスペンス", "恐怖", "horror", "猎奇", "獵奇", "グロ",
+            // 运动 / 音乐 / 美食
+            "运动", "運動", "スポーツ", "体育", "體育", "竞技", "競技", "音乐", "音樂", "音楽", "乐队", "樂隊",
+            "美食", "グルメ", "料理", "烹饪",
+            "篮球", "足球", "棒球", "网球", "排球", "游泳", "拳击", "剑道", "柔道", "空手道", "相扑", "田径",
+            "登山", "钓鱼", "赛车", "自行车", "围棋", "将棋", "麻将", "电竞", "舞蹈", "摄影", "美术",
+            // 社会向
+            "职场", "職場", "仕事", "社畜", "历史", "歷史", "歴史", "军事", "軍事", "战争", "戰爭", "戦争",
+            "政治", "犯罪", "黑帮", "黑幫", "黑道", "不良", "极道", "極道", "悬疑推理",
+            // 情感向
+            "情感", "催泪", "催淚", "感动", "感動", "致郁", "鬱",
+            // 百合 / BL
+            "百合", "GL", "耽美", "BL", "Yaoi", "Yuri",
+            // 设定 / 属性
+            "超能力", "能力", "异能", "異能", "变身", "變身", "变装", "變裝", "女装", "女裝", "偽娘", "伪娘",
+            "猫娘", "獸耳", "兽耳", "时间循环", "平行世界", "轮回", "灵异", "靈異", "超自然", "幽灵", "咒术",
+            "忍者", "武士", "骑士", "海盗", "宫廷", "王族", "贵族", "宿舍", "社团", "打工", "克苏鲁", "蒸汽朋克",
+            // 行业 / 职业
+            "偶像", "演艺", "娱乐圈", "声优", "动画制作", "游戏制作", "漫画业界", "编辑", "医疗", "医生",
+            "律师", "警察", "教师", "厨师", "旅行", "文学", "心理", "社会", "经济", "商业", "金融",
+            // 受众 / 分级
+            "少年", "少女", "青年", "成人", "成人向", "R-18", "エロ", "18禁", "一般向", "全年龄", "全年齡"
+        };
 
         /// <summary>标签里混进来的非分类词：纯数字、系列名/别名、作者名、出版社名。</summary>
         static bool IsNoiseTag(string tag, Metadata m, List<string> extra)
@@ -623,14 +1084,24 @@ namespace ComicManager
             }
 
             var alts = new List<string>();
+            // MU 的主标题一般是罗马字/英文，先当作英文名
+            if (IsLatinTitle(m.Series)) m.SeriesEnglish = m.Series;
             foreach (var a in Objs(Get(d, "associated")))
             {
                 var n = S(a, "title");
                 if (!string.IsNullOrEmpty(n) && !alts.Contains(n)) alts.Add(n);
             }
-            // 关联作品名里挑一个 CJK 的当原名（MU 主标题是拉丁字母，原名通常在这里）
+            // 关联作品名里挑：带假名的当日文原名、纯汉字的当中文名。
+            // MU 主标题是罗马字/英文，中文名和原名都只可能出现在这里。
+            string zh = "", ja = "";
             foreach (var a in alts)
-                if (HasCjk(a) && a != m.Series) { m.LocalizedSeries = a; break; }
+            {
+                if (a == m.Series) continue;
+                if (HasKana(a)) { if (ja.Length == 0) ja = a; }
+                else if (HasCjk(a)) { if (zh.Length == 0) zh = a; }
+                else if (IsLatinTitle(a)) { if (string.IsNullOrEmpty(m.SeriesEnglish)) m.SeriesEnglish = a; }
+            }
+            SetNames(m, zh, ja, m.SeriesEnglish, m.Series);
 
             Finalize(m);
             return m;
@@ -683,7 +1154,8 @@ namespace ComicManager
             var attr = Get(it, "attributes");
             var m = new Metadata { SourceName = LabelOf(MangaDex), SourceId = id };
             var titles = Get(attr, "title");
-            SetNames(m, FirstStr(titles, "zh", "zh-hk"), FirstStr(titles, "ja"), BestTitle(titles));
+            SetNames(m, FirstStr(titles, "zh", "zh-hk"), FirstStr(titles, "ja", "ko"),
+                     FirstStr(titles, "en"), BestTitle(titles));
 
             var desc = Get(attr, "description");
             m.Summary = Clean(FirstStr(desc, "zh", "zh-hk", "en", "ja"));
@@ -705,15 +1177,23 @@ namespace ComicManager
             else if (cr == "erotica") m.AgeRating = "Mature";
             else if (cr == "pornographic") m.AgeRating = "Adults Only";
 
-            var tags = new List<string>();
+            // 标签：MangaDex 自带分组（genre / theme / format / content），
+            // 正好能把「类型」与「题材」分开，而且这里一个都不截断。
+            var genres = new List<string>();
+            var extras = new List<string>();
             foreach (var t in Objs(Get(attr, "tags")))
             {
-                var name = Get(Get(t, "attributes"), "name");     // {en:.., ja:..} 字典
+                var ta = Get(t, "attributes");
+                var name = Get(ta, "name");     // {en:.., ja:..} 字典
                 var en = S(name, "en");
                 if (string.IsNullOrEmpty(en)) en = S(name, "ja");
-                if (!string.IsNullOrEmpty(en)) tags.Add(en);
+                if (string.IsNullOrEmpty(en)) continue;
+                if (string.Equals(S(ta, "group"), "genre", StringComparison.OrdinalIgnoreCase)) genres.Add(en);
+                else extras.Add(en);
             }
-            if (tags.Count > 0) m.Genre = string.Join(", ", tags.Take(8).ToArray());
+            if (genres.Count == 0 && extras.Count > 0) { genres.AddRange(extras); extras.Clear(); }
+            if (genres.Count > 0) m.Genre = string.Join(", ", genres.ToArray());
+            if (extras.Count > 0) m.Tags = string.Join(", ", extras.ToArray());
 
             var writers = new List<string>();
             var artists = new List<string>();
@@ -910,11 +1390,18 @@ namespace ComicManager
             return a + ", " + b;
         }
 
-        /// <summary>简介里的 HTML 与换行去掉：ComicInfo 是纯文本字段，塞标签进去只会在阅读器里露出来。</summary>
+        /// <summary>
+        /// 简介里的 HTML 与换行去掉：ComicInfo 是纯文本字段，塞标签进去只会在阅读器里露出来。
+        ///
+        /// 换行先统一成 \n：源站（Bangumi 尤其）给的是 \r\n，而 XML 解析器读回来时
+        /// 会把 CRLF 折成 LF —— 不统一的话，同一段简介写进去再读出来就"变"了，
+        /// 「对比」每次都报一排假差异。
+        /// </summary>
         static string Clean(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
-            var t = Regex.Replace(s, "<br\\s*/?>", "\n", RegexOptions.IgnoreCase);
+            var t = s.Replace("\r\n", "\n").Replace('\r', '\n');
+            t = Regex.Replace(t, "<br\\s*/?>", "\n", RegexOptions.IgnoreCase);
             t = Regex.Replace(t, "</p>", "\n", RegexOptions.IgnoreCase);
             t = Regex.Replace(t, "<[^>]+>", "");
             t = t.Replace("&nbsp;", " ").Replace("&amp;", "&").Replace("&quot;", "\"")

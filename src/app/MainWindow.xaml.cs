@@ -15,7 +15,7 @@ namespace ComicManager
         /// <summary>命令 id → 菜单项。用于回填勾选状态。</summary>
         readonly Dictionary<string, MenuItem> _byCommand = new Dictionary<string, MenuItem>();
 
-        /// <summary>分组 → 当前选中值（mode / reading / target）。</summary>
+        /// <summary>分组 → 当前选中值（page / mode / target）。</summary>
         readonly Dictionary<string, string> _checked = new Dictionary<string, string>();
 
         /// <summary>状态栏中段瞬时提示的定时器（1.8 秒自消，规范 §六）。</summary>
@@ -37,7 +37,7 @@ namespace ComicManager
 
             // 标题栏 = 程序名 + 空格 + 版本号（版本唯一来源是 version.props，不写字面量）
             Title = Brand.Name + " " + Brand.Version;
-            TxtVersion.Text = "版本 " + Brand.Version;
+            TxtVersion.Text = "版本 " + Brand.Version + BuildStamp();
             BuildMenu();
 
             Loaded += OnLoaded;
@@ -45,6 +45,23 @@ namespace ComicManager
         }
 
         // ------------------------------------------------------------ 菜单
+
+        /// <summary>
+        /// 版本号后面跟一个「构建时间」：exe 自身的写时间。
+        /// 这台机器上装过一份、源码旁又编一份，两边长得一模一样 ——
+        /// 改了半天没效果，最后发现跑的是安装目录里那个两天前的 exe。
+        /// 有了这个时间戳，一眼能看出手里这个是不是刚编出来的那个。
+        /// </summary>
+        static string BuildStamp()
+        {
+            try
+            {
+                var exe = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                if (string.IsNullOrEmpty(exe)) return "";
+                return "  ·  " + System.IO.File.GetLastWriteTime(exe).ToString("MM-dd HH:mm");
+            }
+            catch { return ""; }
+        }
 
         /// <summary>
         /// 菜单结构完全来自 AppMenu.Build()，XAML 里不写死任何一项：
@@ -61,7 +78,6 @@ namespace ComicManager
 
             SetCheck("page", "home");
             SetCheck("mode", "convert");
-            SetCheck("reading", "auto");
             SetCheck("target", "both");
         }
 
@@ -87,7 +103,6 @@ namespace ComicManager
             {
                 SetCheck(it.Group, it.Value);
                 if (it.Group == "mode") Js("UI.setMode('" + it.Value + "')");
-                else if (it.Group == "reading") Js("UI.setReading('" + it.Value + "')");
                 else if (it.Group == "target") Js("UI.setTarget('" + it.Value + "')");
                 else if (it.Group == "page") Js("UI.go('" + it.Value + "')");
                 return;
@@ -107,7 +122,7 @@ namespace ComicManager
                 case "scrape-scan": GoPage("scrape"); Js("UI.scan()"); break;
                 case "scrape-search": GoPage("scrape"); Js("UI.search()"); break;
                 case "scrape-preview": GoPage("scrape"); Js("UI.preview()"); break;
-                case "scrape-batch": GoPage("scrape"); Js("UI.batch()"); break;
+                case "scrape-auto": GoPage("scrape"); Js("UI.batch()"); break;
                 case "scrape-start": GoPage("scrape"); Js("UI.start()"); break;
                 case "scrape-write-group": GoPage("scrape"); Js("UI.writeGroup()"); break;
                 case "scrape-stop": Js("UI.stop()"); break;
@@ -117,14 +132,12 @@ namespace ComicManager
                 case "open-out": OpenFolder(GetCfgString("out")); break;
                 case "open-appdir": OpenFolder(AppDomain.CurrentDomain.BaseDirectory); break;
                 case "open-config-dir": OpenFolder(Path.GetDirectoryName(Api.ConfigPath)); break;
-                case "open-cache": OpenFolder(CacheDir); break;
                 case "open-log": OpenPath(App.LogPath); break;
 
                 case "clear-log": Js("UI.clearLog()"); break;
                 case "clear-preview": Js("UI.clearPreview()"); break;
 
                 // 不可逆操作不弹窗：交给页面底部的内联确认条（规范 §七 级③）
-                case "clear-cache": Js("UI.confirm('clear-cache')"); break;
                 case "reset-config": Js("UI.confirm('reset-config')"); break;
 
                 case "copy-email": CopyEmail(); break;
@@ -277,30 +290,12 @@ namespace ComicManager
             App.Dump("clipboard unavailable: " + Brand.Email);
         }
 
-        /// <summary>清缓存：删除动作已经在页面里确认过，这里只做事 + 状态栏反馈。</summary>
-        void ClearCache()
-        {
-            var f = Path.Combine(CacheDir, "origin-cache.json");
-            if (!File.Exists(f)) { Toast("还没有阅读方向缓存"); return; }
-
-            try
-            {
-                File.Delete(f);
-                Toast("已清除阅读方向缓存");     // 成功提示不弹窗（§七.1 禁止「点确定后又弹一个」）
-            }
-            catch (Exception ex)
-            {
-                ReportError("清除缓存失败：" + ex.Message);
-            }
-        }
-
         void ResetConfig()
         {
             try { Api.SaveConfig(Api.DefaultConfig()); }
             catch (Exception ex) { ReportError("恢复默认设置失败：" + ex.Message); return; }
 
             SetCheck("mode", "convert");
-            SetCheck("reading", "auto");
             SetCheck("target", "both");
             Js("UI.reload()");
             Toast("已恢复默认设置");
@@ -438,8 +433,7 @@ namespace ComicManager
                 if (parsed.ContainsKey("act"))
                 {
                     var act = Convert.ToString(parsed["act"]);
-                    if (act == "clear-cache") ClearCache();
-                    else if (act == "reset-config") ResetConfig();
+                    if (act == "reset-config") ResetConfig();
                     else if (act == "open-path")
                     {
                         // 页面上按 Ctrl+E：把选中的漫画目录/文件交给资源管理器定位
@@ -453,7 +447,6 @@ namespace ComicManager
 
                 if (parsed.ContainsKey("page")) SetCheck("page", Convert.ToString(parsed["page"]));
                 if (parsed.ContainsKey("mode")) SetCheck("mode", Convert.ToString(parsed["mode"]));
-                if (parsed.ContainsKey("reading")) SetCheck("reading", Convert.ToString(parsed["reading"]));
                 if (parsed.ContainsKey("target")) SetCheck("target", Convert.ToString(parsed["target"]));
                 if (parsed.ContainsKey("saved")) StSaved.Text = Convert.ToString(parsed["saved"]);
                 if (parsed.ContainsKey("phase"))
@@ -463,7 +456,7 @@ namespace ComicManager
                 }
                 if (parsed.ContainsKey("count")) StCount.Text = Convert.ToString(parsed["count"]);
                 if (parsed.ContainsKey("current")) StCurrent.Text = Convert.ToString(parsed["current"]);
-                // 状态栏右侧三段：文案由页面整段给（转换页是「目标 X / 方向 X / 并发 N」，
+                // 状态栏右侧三段：文案由页面整段给（转换页是「目标 X / 压缩 X / 并发 N」，
                 // 刮削页换成本页参数），宿主不再自己拼前缀 —— 一页一套参数，拼死前缀就串味了
                 if (parsed.ContainsKey("targetText")) StTarget.Text = Convert.ToString(parsed["targetText"]);
                 if (parsed.ContainsKey("readingText")) StReading.Text = Convert.ToString(parsed["readingText"]);

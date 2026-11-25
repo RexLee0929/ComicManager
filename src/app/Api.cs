@@ -53,21 +53,20 @@ namespace ComicManager
                 {"page", "home"},
                 {"scrape_sources", new object[] { MetaSources.Bangumi, MetaSources.MangaUpdates }},
                 {"scrape_dirs", new object[0]},
-                {"scrape_target", "both"},
-                {"scrape_backup", true},
+                {"scrape_target", "kavitacustom"},
+                {"scrape_backup", false},
+                {"scrape_skip_number", true},
                 {"scrape_series_json", true},
                 {"scrape_cover", true},
                 {"scrape_cover_overwrite", false},
+                {"scrape_collections", true},
                 {"scrape_threads", 3},
                 {"scrape_cover_pick", "auto"},
                 {"scrape_cover_width", 800},
                 {"scrape_fill_missing", true},
-                {"scrape_special_number", false},
-                {"scrape_keep_raw", true},
                 {"scrape_rename", false},
-                {"rename_template", "{series}/{id}"},
+                {"rename_template", "{series}/{prefix}{id}"},
                 {"last_dir", ""},
-                {"scrape_split_suffix", true}
             };
         }
 
@@ -273,10 +272,7 @@ namespace ComicManager
                     {"file", Core.BuildFileName(it, cfg)},
                     {"pages", it.Pages},
                     {"vol", it.Vol ?? 0},
-                    {"special", it.IsSpecial},
-                    {"dir", it.Reading},
-                    {"country", it.Country},
-                    {"origin", it.CountrySource}
+                    {"special", it.IsSpecial}
                 });
             }
             return new Dictionary<string, object> { { "rows", rows }, { "errors", errors } };
@@ -469,7 +465,11 @@ namespace ComicManager
                 }
                 if (req.Path == "/api/pick")
                 {
-                    body = MiniJson.Serialize(new Dictionary<string, object> { { "path", PickFolder() } });
+                    // path = 输入框现值：有这个值就先从它所在的目录打开
+                    body = MiniJson.Serialize(new Dictionary<string, object>
+                    {
+                        {"path", PickFolder(Core.GetStr(data, "path", ""))}
+                    });
                     return;
                 }
                 if (req.Path == "/api/copy")
@@ -511,10 +511,17 @@ namespace ComicManager
                 {
                     body = MiniJson.Serialize(Guard(delegate
                     {
-                        var series = Scrape.Scan(Core.GetList(data, "sources"), null);
+                        // 扫描过程写进刮削日志：加了新文件却「没扫出来」时，
+                        // 一眼就能看到这次到底扫到几个文件、归成几个系列
+                        var series = Scrape.Scan(Core.GetList(data, "sources"),
+                                                 delegate(string m) { Scrape.Log(m, "i"); });
                         var rows = new List<object>();
-                        foreach (var s in series) rows.Add(s.ToJson());
-                        return new Dictionary<string, object> { { "series", rows.ToArray() } };
+                        int files = 0;
+                        foreach (var s in series) { rows.Add(s.ToJson()); files += s.Files.Count; }
+                        return new Dictionary<string, object>
+                        {
+                            {"series", rows.ToArray()}, {"files", files}
+                        };
                     }));
                     return;
                 }
@@ -549,7 +556,118 @@ namespace ComicManager
                             meta = MetaSources.Fetch(src, id, log);
 
                         if (meta == null) return new Dictionary<string, object> { { "err", "这个来源没有返回详情" } };
-                        return new Dictionary<string, object> { { "meta", Scrape.MetaToJson(meta) } };
+
+                        var res = new Dictionary<string, object> { { "meta", Scrape.MetaToJson(meta) } };
+
+                        // 每卷 ISBN：只有来源是 Bangumi 才有，而且是按「单行本」子条目查的，
+                        // 数量可能比库里的册数少（缺卷不给），前端按卷号对上才算数
+                        if (Core.GetBool(data, "volumes", false))
+                        {
+                            var vols = MetaSources.FetchVolumeIsbns(src, id, log);
+                            var list = new List<object>();
+                            foreach (var v in vols)
+                                list.Add(new Dictionary<string, object>
+                                {
+                                    {"volume", v.Volume}, {"gtin", v.Gtin}, {"url", v.Url}
+                                });
+                            res["volumes"] = list.ToArray();
+                        }
+                        return res;
+                    }));
+                    return;
+                }
+
+                // 「获取额外数据库 id」：对选中的、已经刮过的系列，拿原名 / 英文名去
+                // AniList / MAL / MangaBaka 反查 id，然后只把 id 补进包内 XML（别的字段不动）。
+                if (req.Path == "/api/scrape/extraids")
+                {
+                    body = MiniJson.Serialize(Guard(delegate
+                    {
+                        var apply = Core.GetBool(data, "apply", false);
+                        // 分隔符跟着目标服务器走：Kavita 只按逗号认外部 id，Komga 只按空格认链接
+                        var target = Core.GetStr(data, "target", "kavitacustom");
+                        var webSep = MetaOptions.Preset(target).WebSep;
+                        var rows = new List<object>();
+                        int ok = 0, none = 0, failed = 0;
+
+                        var arr = data.ContainsKey("items") ? data["items"] as object[] : null;
+                        if (arr != null)
+                        {
+                            foreach (var o in arr)
+                            {
+                                var d = o as Dictionary<string, object>;
+                                if (d == null) continue;
+                                var dir = Core.GetStr(d, "dir", "");
+                                if (dir.Length == 0) continue;
+
+                                var terms = Core.GetList(d, "terms");
+                                var r = MetaSources.FindExternalIds(terms,
+                                    delegate(string msg) { Scrape.Log(msg, "i"); });
+
+                                var row = new Dictionary<string, object>
+                                {
+                                    {"dir", dir}, {"matched", r.Matched},
+                                    {"score", Math.Round(r.Score, 3)},
+                                    {"ids", r.Describe()},
+                                    {"aniList", r.AniListId}, {"mal", r.MalId},
+                                    {"mangaBaka", r.MangaBakaId},
+                                    {"missing", string.Join("、", r.Missed.ToArray())},
+                                    {"wrote", 0}, {"err", ""}
+                                };
+
+                                if (!r.Any) none++;
+                                else if (!apply) ok++;
+                                else
+                                {
+                                    var ids = new Metadata();
+                                    r.ApplyTo(ids);
+                                    int wrote = 0;
+                                    var errs = new List<string>();
+                                    try
+                                    {
+                                        foreach (var f in Directory.GetFiles(dir, "*.cbz", SearchOption.TopDirectoryOnly))
+                                        {
+                                            bool changed; string e2;
+                                            if (!ComicInfo.PatchExternalIds(f, ids, webSep, out changed, out e2))
+                                            { errs.Add(Path.GetFileName(f) + "：" + e2); continue; }
+                                            if (changed) wrote++;
+                                        }
+                                    }
+                                    catch (Exception ex) { errs.Add(ex.Message); }
+
+                                    // series.json 的 webLinks 一起补：侧车不更新的话，
+                                    // Kavita 重扫后「外部元数据」还是旧的，包内 XML 和侧车就对不上了
+                                    if (target == "kavitacustom")
+                                    {
+                                        var sjAdded = SeriesJson.MergeWebLinks(
+                                            Path.Combine(dir, SeriesJson.FileName), ids);
+                                        if (sjAdded > 0)
+                                            Scrape.Log("series.json 链接已更新（+" + sjAdded + "）："
+                                                + Path.GetFileName(dir), "i");
+                                    }
+
+                                    row["wrote"] = wrote;
+                                    if (errs.Count > 0)
+                                    {
+                                        row["err"] = string.Join("；", errs.Take(3).ToArray());
+                                        failed++;
+                                    }
+                                    else
+                                    {
+                                        ok++;
+                                        Scrape.Log("已写入外部 id：" + Path.GetFileName(dir)
+                                            + "（" + wrote + " 本）" + r.Describe(), "i");
+                                    }
+                                }
+                                rows.Add(row);
+                            }
+                        }
+
+                        return new Dictionary<string, object>
+                        {
+                            {"items", rows.ToArray()},
+                            {"ok", ok}, {"none", none}, {"failed", failed}
+                        };
                     }));
                     return;
                 }
@@ -566,19 +684,26 @@ namespace ComicManager
                     {
                         var meta = Scrape.MetaFromJson(data.ContainsKey("meta")
                             ? data["meta"] as Dictionary<string, object> : null);
-                        var opt = new MetaOptions
-                        {
-                            Target = Core.GetStr(data, "target", "both"),
-                            SplitSeriesVolume = Core.GetBool(data, "splitSuffix", true),
-                            SpecialAsNumber = Core.GetBool(data, "specialNumber", false)
-                        };
+                        // 拆卷号 / 番外小数号不再由界面给：按目标服务器套预设值
+                        // 刮削页三档：Kavita Custom / Kavita（原版）/ Komga，缺省按 Kavita Custom
+                        var opt = MetaOptions.Preset(Core.GetStr(data, "target", "kavitacustom"));
+                        opt.WriteSeriesGroup = Core.GetBool(data, "collections", true);
+                        // 「不写 Number」：Kavita 系档位的界面开关，正传只写卷 / 话只写话
+                        opt.SkipNumber = Core.GetBool(data, "skipNumber", false);
+                        // 「番外卷号占 0」：独立开关，Custom 档默认开；关掉则番外卷号清空
+                        opt.SpecialVolumeZero = Core.GetBool(data, "spVolZero", false);
                         int pages = Core.GetInt(data, "pageCount", 0);
                         int total = Core.GetInt(data, "totalIssues", 0);
+                        // 回传的号 / 系列名用按档位收拾过的：界面拿它对齐表单与预览，
+                        // 不能给原始值（否则「不写 Number」开着时表单和 XML 对不上）
+                        var shown = meta.Clone();
+                        ComicInfo.Normalize(shown, opt);
                         return new Dictionary<string, object>
                         {
                             {"xml", Scrape.PreviewXml(meta, opt, pages)},
-                            {"seriesJson", Scrape.PreviewSeriesJson(meta, total)},
-                            {"number", meta.Number}, {"volume", meta.Volume}, {"series", meta.Series}
+                            {"seriesJson", Scrape.PreviewSeriesJson(meta, total,
+                                Core.GetStr(data, "target", "kavitacustom"))},
+                            {"number", shown.Number}, {"volume", shown.Volume}, {"series", shown.Series}
                         };
                     }));
                     return;
@@ -590,21 +715,26 @@ namespace ComicManager
 
                     body = MiniJson.Serialize(Guard(delegate
                     {
+                        var target = Core.GetStr(data, "target", "kavitacustom");
+                        var metaOpt = MetaOptions.Preset(target);
+                        // 生成收藏：Kavita 靠 SeriesGroup 自动建 Collections，关掉就不写这个标签
+                        metaOpt.WriteSeriesGroup = Core.GetBool(data, "collections", true);
+                        // 「不写 Number」：Kavita 系档位的界面开关
+                        metaOpt.SkipNumber = Core.GetBool(data, "skipNumber", false);
+                        // 「番外卷号占 0」：独立开关，Custom 档默认开
+                        metaOpt.SpecialVolumeZero = Core.GetBool(data, "spVolZero", false);
                         var opt = new MetaWriter.Options
                         {
-                            Backup = Core.GetBool(data, "backup", true),
-                            WriteSeriesJson = Core.GetBool(data, "seriesJson", true),
+                            // series.json 固定写（Kavita Custom 的系列数据全靠它），界面不再给开关
+                            WriteSeriesJson = true,
+                            Backup = Core.GetBool(data, "backup", false),
                             WriteCover = Core.GetBool(data, "cover", true),
                             OverwriteCover = Core.GetBool(data, "coverOverwrite", false),
                             CoverPick = Core.GetStr(data, "coverPick", "auto"),
                             CoverMaxWidth = Core.GetInt(data, "coverWidth", 800),
-                            KeepOriginal = Core.GetBool(data, "keepRaw", true),
-                            Meta = new MetaOptions
-                            {
-                                Target = Core.GetStr(data, "target", "both"),
-                                SplitSeriesVolume = Core.GetBool(data, "splitSuffix", true),
-                                SpecialAsNumber = Core.GetBool(data, "specialNumber", false)
-                            }
+                            KeepOriginal = true,      // 固定保留最原始那份，不给界面关
+                            // 拆卷号 / 番外小数号：按目标服务器套预设值，不再由界面传
+                            Meta = metaOpt
                         };
 
                         var jobs = new List<ScrapeJob>();
@@ -620,6 +750,8 @@ namespace ComicManager
                                     Dir = Core.GetStr(d, "dir", ""),
                                     Series = Core.GetStr(d, "series", ""),
                                     TotalIssues = Core.GetInt(d, "totalIssues", 0),
+                                    // 一本一册的系列：即便这次只发一本，系列级那几项也不能套下来
+                                    MultiSeries = Core.GetBool(d, "multi", false),
                                     Meta = Scrape.MetaFromJson(d.ContainsKey("meta")
                                         ? d["meta"] as Dictionary<string, object> : null)
                                 };
@@ -632,13 +764,18 @@ namespace ComicManager
                                         if (fd == null) continue;
                                         var path = Core.GetStr(fd, "path", "");
                                         if (path.Length == 0) continue;
-                                        // 每本自己的号、标题、特殊类型、ISBN：同一系列里番外和正传能分别标
+                                        // 每本自己的号、标题、特殊类型、ISBN：同一系列里番外和正传能分别标；
+                                        // 后两项是单册专属的链接与本册简介（留空就用系列级那个）
                                         var pair = Core.GetStr(fd, "volume", "") + "|"
                                                  + Core.GetStr(fd, "number", "") + "|"
                                                  + Core.GetStr(fd, "title", "") + "|"
                                                  + Core.GetStr(fd, "format", "") + "|"
-                                                 + Core.GetStr(fd, "gtin", "");
+                                                 + Core.GetStr(fd, "gtin", "") + "|"
+                                                 + Core.GetStr(fd, "web", "") + "|"
+                                                 + Core.GetStr(fd, "summary", "");
                                         job.Files.Add(new KeyValuePair<string, string>(path, pair));
+                                        // 用户亲手改过的册：后端按这个决定要不要关掉番外清卷号等规则
+                                        if (Core.GetBool(fd, "manual", false)) job.ManualFiles.Add(path);
                                     }
                                 }
                                 if (job.Files.Count > 0) jobs.Add(job);
@@ -678,7 +815,7 @@ namespace ComicManager
                     body = MiniJson.Serialize(Guard(delegate
                     {
                         var template = Core.GetStr(data, "template", Renamer.DefaultTemplate);
-                        var all = new List<Renamer.Item>();
+                        var plans = new List<Renamer.Plan>();
 
                         var arr = data.ContainsKey("jobs") ? data["jobs"] as object[] : null;
                         if (arr != null)
@@ -690,6 +827,7 @@ namespace ComicManager
                                 var dir = Core.GetStr(d, "dir", "");
                                 var series = Core.GetStr(d, "series", "");
                                 var year = Core.GetStr(d, "year", "");
+                                if (dir.Length == 0) continue;
 
                                 var pairs = new List<KeyValuePair<string, string>>();
                                 var files = d.ContainsKey("files") ? d["files"] as object[] : null;
@@ -709,29 +847,67 @@ namespace ComicManager
                                             Core.GetStr(fd, "title", "")));
                                     }
                                 }
-                                all.AddRange(Renamer.Plan(template, dir, series, year, pairs));
+                                var plan = Renamer.Build(template, dir, series, year, pairs);
+                                if (plan.Items.Count > 0) plans.Add(plan);
                             }
                         }
 
-                        if (all.Count == 0)
+                        if (plans.Count == 0)
                             return new Dictionary<string, object> { { "err", "没有可重命名的文件" } };
 
                         if (preview)
                         {
                             var rows = new List<object>();
-                            foreach (var it in all)
-                                rows.Add(new Dictionary<string, object>
-                                {
-                                    {"src", it.Src}, {"dst", it.Dst},
-                                    {"same", it.Same},
-                                    {"exists", !it.Same && File.Exists(it.Dst)}
-                                });
+                            foreach (var p in plans)
+                            {
+                                // 文件夹那一行先给出来：让用户看清是「改文件夹名」而不是「搬到新文件夹」
+                                if (!string.IsNullOrEmpty(p.DirDst))
+                                    rows.Add(new Dictionary<string, object>
+                                    {
+                                        {"kind", "dir"},
+                                        {"src", p.DirSrc}, {"dst", p.DirDst},
+                                        {"same", false},
+                                        {"exists", Directory.Exists(p.DirDst)},
+                                        {"note", ""}
+                                    });
+                                else if (!string.IsNullOrEmpty(p.Note))
+                                    rows.Add(new Dictionary<string, object>
+                                    {
+                                        {"kind", "dir"},
+                                        {"src", p.DirSrc}, {"dst", p.DirSrc},
+                                        {"same", true}, {"exists", false},
+                                        {"note", p.Note}
+                                    });
+
+                                foreach (var it in p.Items)
+                                    rows.Add(new Dictionary<string, object>
+                                    {
+                                        {"kind", "file"},
+                                        {"src", it.Src}, {"dst", it.Dst},
+                                        {"same", it.Same},
+                                        {"exists", !it.Same && File.Exists(it.Dst)},
+                                        {"note", ""}
+                                    });
+                            }
                             return new Dictionary<string, object> { { "rows", rows.ToArray() } };
                         }
 
-                        var r = Renamer.Apply(all, delegate(string msg, string lv) { Scrape.Log(msg, lv); });
-                        r["err"] = "";
-                        return r;
+                        int moved = 0, skipped = 0, failed = 0;
+                        var errs = new List<string>();
+                        foreach (var p in plans)
+                        {
+                            var r = Renamer.Apply(p, delegate(string msg, string lv) { Scrape.Log(msg, lv); });
+                            moved += Convert.ToInt32(r["moved"]);
+                            skipped += Convert.ToInt32(r["skipped"]);
+                            failed += Convert.ToInt32(r["failed"]);
+                            var e = Convert.ToString(r["err"]);
+                            if (!string.IsNullOrEmpty(e)) errs.Add(e);
+                        }
+                        return new Dictionary<string, object>
+                        {
+                            {"ok", errs.Count == 0}, {"moved", moved}, {"skipped", skipped},
+                            {"failed", failed}, {"err", string.Join("；", errs.ToArray())}
+                        };
                     }));
                     return;
                 }
@@ -793,8 +969,11 @@ namespace ComicManager
         /// 选目录。这件事**必须回到 WPF 的 UI 线程**做，而且要给 Owner：
         /// 请求是在后台线程上处理的，WinForms 的文件夹框要求 STA，从后台线程直接 ShowDialog 会抛异常；
         /// 就算侥幸弹出来，没有 Owner 也会掉到主窗口后面去 —— 用户看到的就是「点浏览没反应」。
+        ///
+        /// start 是输入框里现有的值：有这个值就以它为准打开（用户点某个已填好的路径旁边
+        /// 的「浏览」，多半是想在那附近换一个目录），空着才回退到上次选过的目录。
         /// </summary>
-        static string PickFolder()
+        static string PickFolder(string start)
         {
             var app = System.Windows.Application.Current;
             if (app == null) return "ERR:程序界面还没准备好";
@@ -815,16 +994,22 @@ namespace ComicManager
                             // 漫画库多半在别的盘，多一层层点进去很烦。
                             try { dlg.RootFolder = Environment.SpecialFolder.MyComputer; } catch { }
 
-                            // 停在上次选过的目录；目录不在了就当没记忆
-                            var cfg = LoadConfig();
-                            var last = cfg.ContainsKey("last_dir") ? Convert.ToString(cfg["last_dir"]) : "";
-                            if (!string.IsNullOrEmpty(last) && Directory.Exists(last)) dlg.SelectedPath = last;
+                            var begin = StartDir(start);
+                            if (begin.Length == 0)
+                            {
+                                // 输入框是空的：回到上次选过的目录；目录不在了就当没记忆
+                                var cfg = LoadConfig();
+                                var last = cfg.ContainsKey("last_dir") ? Convert.ToString(cfg["last_dir"]) : "";
+                                if (!string.IsNullOrEmpty(last) && Directory.Exists(last)) begin = last;
+                            }
+                            if (begin.Length > 0) dlg.SelectedPath = begin;
 
                             var owner = app.MainWindow == null ? null : new OwnerHandle(app.MainWindow);
                             var r = owner == null ? dlg.ShowDialog() : dlg.ShowDialog(owner);
                             if (r == System.Windows.Forms.DialogResult.OK)
                             {
                                 result = dlg.SelectedPath;
+                                var cfg = LoadConfig();
                                 cfg["last_dir"] = result;
                                 SaveConfig(cfg);
                             }
@@ -836,6 +1021,26 @@ namespace ComicManager
             }
             catch (Exception ex) { return "ERR:" + ex.Message; }
             return result;
+        }
+
+        /// <summary>
+        /// 从输入框的现值推出「从哪儿打开」：目录本身、文件所在目录、或者还不存在的路径的父目录。
+        /// 一路都不存在就返回空，交给「上次的目录」兜底。
+        /// </summary>
+        static string StartDir(string start)
+        {
+            var s = (start ?? "").Trim().Trim('"');
+            for (int i = 0; i < 4 && s.Length > 0; i++)
+            {
+                try
+                {
+                    if (Directory.Exists(s)) return s;
+                    if (File.Exists(s)) return Path.GetDirectoryName(s) ?? "";
+                    s = Path.GetDirectoryName(s.TrimEnd('\\', '/')) ?? "";
+                }
+                catch { return ""; }
+            }
+            return "";
         }
 
         /// <summary>把 WPF 窗口包成 WinForms 认的 Owner，保证对话框压在主窗口上、模态跟着主窗口。</summary>

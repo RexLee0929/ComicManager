@@ -64,7 +64,7 @@ namespace ComicManager
                 Check("元数据刮削(_S)", "page:scrape", "page", "scrape")
             }));
 
-            tree.Add(Pair("转换(_C)", new List<Item>
+            tree.Add(Pair("格式转换(_C)", new List<Item>
             {
                 Of("添加源目录(_A)…", "add-source", "plus", "Ctrl+O"),
                 Sep(),
@@ -78,14 +78,14 @@ namespace ComicManager
                 Of("退出(_X)", "exit", "close", "Alt+F4")
             }));
 
-            tree.Add(Pair("刮削(_S)", new List<Item>
+            tree.Add(Pair("元数据刮削(_S)", new List<Item>
             {
                 Of("扫描目录(_D)", "scrape-scan", "folder"),
                 Of("搜索当前系列(_F)", "scrape-search", "search"),
                 Sep(),
                 Of("生成预览(_P)", "scrape-preview", "eye"),
-                Of("批量取首条(_B)", "scrape-batch", "list"),
-                Of("写入整组(_G)", "scrape-write-group", "convert"),
+                Of("自动刮削选中(_A)", "scrape-auto", "search"),
+                Of("应用全部(_G)", "scrape-write-group", "convert"),
                 Of("写入全部已匹配(_W)", "scrape-start", "play"),
                 Of("停止写入(_T)", "scrape-stop", "stop"),
                 Sep(),
@@ -102,11 +102,6 @@ namespace ComicManager
                 Check("EPUB → CBZ(_C)", "mode:convert", "mode", "convert"),
                 Check("格式互转(_F)", "mode:repack", "mode", "repack"),
                 Sep(),
-                Check("阅读方向：自动判断(_A)", "reading:auto", "reading", "auto"),
-                Check("阅读方向：右开本(_R)", "reading:rtl", "reading", "rtl"),
-                Check("阅读方向：左开本(_L)", "reading:ltr", "reading", "ltr"),
-                Check("阅读方向：上到下(_B)", "reading:ttb", "reading", "ttb"),
-                Sep(),
                 Check("目标：双兼容(_O)", "target:both", "target", "both"),
                 Check("目标：Kavita(_K)", "target:kavita", "target", "kavita"),
                 Check("目标：Komga(_G)", "target:komga", "target", "komga"),
@@ -118,9 +113,6 @@ namespace ComicManager
             {
                 Of("打开程序目录(_P)", "open-appdir", "window"),
                 Of("打开配置目录(_C)", "open-config-dir", "settings"),
-                Sep(),
-                Of("打开阅读方向缓存(_K)", "open-cache", "cache"),
-                Of("清除阅读方向缓存(_X)", "clear-cache", "trash"),
                 Sep(),
                 Of("查看错误日志(_L)", "open-log", "file"),
                 Of("刷新界面(_F)", "reload", "refresh", "F5"),

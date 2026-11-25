@@ -20,17 +20,6 @@ namespace ComicManager
         public int Pages;
         public string Title = "";
         public Dictionary<string, string> Meta = new Dictionary<string, string>();
-
-        /// <summary>页面 高/宽 的中位数，用来识别长条页（条漫）。0 表示没量到。</summary>
-        public double TallRatio;
-
-        /// <summary>始发国家/地区：JP / KR / CN / TW / HK，判不出为 null。</summary>
-        public string Country;
-        public string CountrySource = "none";
-
-        /// <summary>rtl / ltr / ttb。</summary>
-        public string Reading = "rtl";
-        public string ReadingSource = "default";
     }
 
     public class ConvertResult
@@ -351,10 +340,6 @@ namespace ComicManager
             if (it.Meta.TryGetValue("language", out l) && !string.IsNullOrEmpty(l))
                 lang = (l == "zh-CN" || l == "zh-TW" || l == "zh-HK") ? "zh" : l;
 
-            var mode = string.IsNullOrEmpty(it.Reading) ? GetStr(cfg, "reading", "auto") : it.Reading;
-            if (mode != "rtl" && mode != "ltr" && mode != "ttb") mode = "rtl";
-            var manga = mode == "rtl" ? "YesAndRightToLeft" : "No";
-
             var sb = new StringBuilder();
             sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
             sb.Append("<ComicInfo xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n");
@@ -364,12 +349,8 @@ namespace ComicManager
             sb.Append("  <Volume>").Append(vol).Append("</Volume>\n");
             sb.Append("  <PageCount>").Append(pageCount).Append("</PageCount>\n");
             sb.Append("  <LanguageISO>").Append(Esc(lang)).Append("</LanguageISO>\n");
-            sb.Append("  <Manga>").Append(manga).Append("</Manga>\n");
-            // 下面两个不是 ComicInfo 标准字段，Kavita / Komga 会忽略；
-            // 写在这里是为了下次换目录重跑时直接复用判定，不再联网。
-            if (!string.IsNullOrEmpty(it.Country))
-                sb.Append("  <OriginCountry>").Append(it.Country).Append("</OriginCountry>\n");
-            sb.Append("  <ReadingMode>").Append(mode).Append("</ReadingMode>\n");
+            // 阅读方向（Manga）不在这里判定：转换只看文件名与 OPF，猜出来的「右开/左开」
+            // 十有八九是错的（中文版日漫会被判成左开）。方向统一由刮削页按来源资料写。
 
             AppendTag(sb, "Writer", it.Meta, "writer");
             AppendTag(sb, "Publisher", it.Meta, "publisher");
@@ -461,8 +442,7 @@ namespace ComicManager
                             Src = f,
                             IsSpecial = special,
                             Pages = pages.Count,
-                            Vol = vol,
-                            TallRatio = Origin.TallRatio(zip, pages, 9)
+                            Vol = vol
                         };
                         it.Series = useT2s ? Chinese.ToSimplified(SafeName(series, 120), true) : SafeName(series, 120);
                         it.Label = (useT2s && t2sLabel) ? Chinese.ToSimplified(label, true) : label;
@@ -491,69 +471,7 @@ namespace ComicManager
             }
 
             AssignVolumes(items);
-            ResolveReading(items, cfg, log);
             return items;
-        }
-
-        /// <summary>
-        /// 按系列判定阅读方向：先看页面比例（长条页 → 上到下），
-        /// 再按已有元数据 / 语言 / 出版社 / 标题文字 / 联网查证定始发国，
-        /// 国家换算成左右开本。手动指定方向时只做离线判定，不联网。
-        /// </summary>
-        public static void ResolveReading(List<Item> items, Dictionary<string, object> cfg, Action<string> log)
-        {
-            var reading = GetStr(cfg, "reading", "auto");
-
-            var groups = new Dictionary<string, List<Item>>(StringComparer.Ordinal);
-            foreach (var it in items)
-            {
-                if (!groups.ContainsKey(it.Series)) groups[it.Series] = new List<Item>();
-                groups[it.Series].Add(it);
-            }
-
-            var det = new OriginDetector();
-            foreach (var kv in groups)
-            {
-                var g = kv.Value;
-                var langs = new List<string>();
-                string publisher = null, origin = null, author = null;
-                double ratio = 0;
-
-                foreach (var it in g)
-                {
-                    string v;
-                    if (it.Meta.TryGetValue("language", out v) && !string.IsNullOrEmpty(v) && !langs.Contains(v))
-                        langs.Add(v);
-                    if (publisher == null && it.Meta.TryGetValue("publisher", out v)) publisher = v;
-                    if (origin == null && it.Meta.TryGetValue("origin", out v)) origin = v;
-                    if (author == null && it.Meta.TryGetValue("writer", out v)) author = v;
-                    if (it.TallRatio > ratio) ratio = it.TallRatio;
-                }
-
-                DetectResult r;
-                try
-                {
-                    r = det.Detect(kv.Key, author, ratio, langs, origin, publisher, reading, log);
-                }
-                catch (Exception ex)
-                {
-                    r = new DetectResult
-                    {
-                        Mode = reading == "auto" ? "rtl" : reading,
-                        ModeSource = "default"
-                    };
-                    if (log != null) log("阅读方向判定失败（" + kv.Key + "）：" + ex.Message);
-                }
-
-                foreach (var it in g)
-                {
-                    it.Country = r.Country;
-                    it.CountrySource = r.CountrySource;
-                    it.Reading = r.Mode;
-                    it.ReadingSource = r.ModeSource;
-                }
-            }
-            det.Save();
         }
 
         // ---------------------------------------------------------- 配置取值

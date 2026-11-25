@@ -10,7 +10,7 @@ namespace ComicManager
         public const string Name = "ComicManager";
 
         /// <summary>一句话说明，仅作副标题，不参与命名。</summary>
-        public const string Tagline = "漫画库格式转换与元数据刮削";
+        public const string Tagline = "出版漫画格式转换与元数据刮削";
 
         public const string Author = "Rex Lee";
         public const string Email = "rexlee@rexleepro.com";

@@ -18,6 +18,8 @@ namespace ComicManager
         public string Title = "";      // 单册标题：包内有就用包内的，没有从文件名括号里取
         public string Format = "";     // Special / Annual…：番外的标记，决定它算不算正传
         public string GTIN = "";       // ISBN：每本一个，系列级没有
+        public string Web = "";        // 这一本自己的条目页（回读时带上，避免重写把单册链接冲掉）
+        public string Summary = "";    // 本册简介：留空就用系列简介
         public string Label = "";      // 展示与命名用的册号：V01 / SP01
         public int Pages;
         public bool HasMeta;
@@ -30,7 +32,8 @@ namespace ComicManager
                 {"path", Path}, {"name", Name},
                 {"volume", Volume}, {"number", Number},
                 {"title", Title}, {"format", Format}, {"gtin", GTIN}, {"label", Label},
-                {"pages", Pages}, {"hasMeta", HasMeta}, {"err", Err}
+                {"pages", Pages}, {"hasMeta", HasMeta}, {"err", Err},
+                {"web", Web}, {"summary", Summary}
             };
         }
     }
@@ -64,7 +67,15 @@ namespace ComicManager
         public string Series = "";
         public Metadata Meta = new Metadata();
         public int TotalIssues;
-        public readonly List<KeyValuePair<string, string>> Files = new List<KeyValuePair<string, string>>();  // path → "vol|num|title|format|gtin"
+        /// <summary>
+        /// 这个系列是不是「一本一册」的多本系列。写入时决定系列级的号 / 标题 / 特殊类型 / 书号
+        /// 要不要清掉 —— 只挑一本写（仅应用本册）时，这个标志必须还是 true，
+        /// 否则会把「系列级那份（往往来自第一本，也就是番外）的 Special 和标题」套到这一本上。
+        /// </summary>
+        public bool MultiSeries;
+        public readonly List<KeyValuePair<string, string>> Files = new List<KeyValuePair<string, string>>();  // path → "vol|num|title|format|gtin|web|summary"
+        /// <summary>用户在界面上亲手改过的文件（和盘上原值不同）。写入时这些册关掉「程序替你改值」的规则。</summary>
+        public readonly List<string> ManualFiles = new List<string>();
         public string Err = "";
     }
 
@@ -128,11 +139,19 @@ namespace ComicManager
         {
             var map = new Dictionary<string, ScrapeSeries>(StringComparer.OrdinalIgnoreCase);
             var files = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var s in sources)
             {
                 if (string.IsNullOrEmpty(s) || !Directory.Exists(s)) continue;
-                files.AddRange(Directory.GetFiles(s, "*.cbz", SearchOption.AllDirectories));
+                // 统一成完整路径：扫描目录可能写成 E:/lib、也可能写成 E:\lib，
+                // 混在一起会让后面的「改名前后的路径比较」永远不相等
+                foreach (var f in Directory.GetFiles(s, "*.cbz", SearchOption.AllDirectories))
+                {
+                    string full;
+                    try { full = Path.GetFullPath(f); } catch { full = f; }
+                    if (seen.Add(full)) files.Add(full);
+                }
             }
             files.Sort(StringComparer.Ordinal);
             if (log != null) log("找到 " + files.Count + " 个 CBZ");
@@ -162,6 +181,9 @@ namespace ComicManager
                             sf.Title = CleanTitle(meta.Title, meta.Series);
                             sf.Format = meta.Format;
                             sf.GTIN = meta.GTIN;
+                            // ReadFromArchive 已经把外部 id 链接拆成字段，这里拿到的是干净的主链接
+                            sf.Web = meta.Web;
+                            sf.Summary = meta.Summary;
                             int pc;
                             if (int.TryParse(meta.PageCount, out pc)) sf.Pages = pc;
                             if (series.Existing == null) series.Existing = meta;
@@ -182,7 +204,11 @@ namespace ComicManager
                 string pname, plabel; int? pvol; bool pspecial;
                 Core.SplitStem(stem, out pname, out pvol, out plabel, out pspecial);
 
-                if (string.IsNullOrEmpty(sf.Volume) && string.IsNullOrEmpty(sf.Number) && pvol.HasValue)
+                // 包里已经有 ComicInfo 就是「准的」：里面没有号，说明用户就是要它空着。
+                // 只有压根没有元数据的老文件，才从文件名里补 —— 否则在界面上把「话/号」
+                // 删掉、应用之后扫一遍又原样长回来，看着像根本没写进去。
+                if (!sf.HasMeta && string.IsNullOrEmpty(sf.Volume) && string.IsNullOrEmpty(sf.Number)
+                    && pvol.HasValue)
                 {
                     sf.Volume = pvol.Value.ToString();
                     sf.Number = pvol.Value.ToString();
@@ -206,6 +232,14 @@ namespace ComicManager
             // 番外被旧版写成 x.5 的，这里还原成卷号：界面先显示对，写出去才不会再错一次
             foreach (var s in map.Values) HealSpecialNumbers(s);
 
+            // 系列链接取「多数票」：existing 原本是第一本的元数据，如果只有某一册
+            // 填了自己的条目页，它会被当成系列链接，写整组时再套给每一本。
+            foreach (var s in map.Values) FixSeriesWeb(s);
+
+            // 再把「等于系列链接」的单册链接清空：那是上一轮兜底写进去的，不是单册页。
+            // 必须排在 FixSeriesWeb 之后 —— 系列链接得先定下来才知道哪些是它。
+            foreach (var s in map.Values) ClearInheritedWeb(s);
+
             // 排好序再发册号：番外按出现顺序 SP01/SP02，正传按卷号 V01/V02
             foreach (var s in map.Values) AssignLabels(s);
 
@@ -217,6 +251,9 @@ namespace ComicManager
         /// <summary>
         /// 缺号的按排序补：整组都没号就从 1 开始，部分有号就接在最大值后面。
         /// 番外那种 x.5 的小数号不参与补号（解析时只认整数）。
+        ///
+        /// 只补「包里没有元数据」的老文件。带 ComicInfo 的文件，号空着是用户的决定
+        /// （他把号删了），补上去等于把删除动作又撤销一遍。
         /// </summary>
         static void FillMissingNumbers(ScrapeSeries s)
         {
@@ -228,11 +265,50 @@ namespace ComicManager
             }
             foreach (var f in s.Files)
             {
+                if (f.HasMeta) continue;
                 if (!string.IsNullOrEmpty(f.Volume) && !string.IsNullOrEmpty(f.Number)) continue;
                 max++;
                 if (string.IsNullOrEmpty(f.Volume)) f.Volume = max.ToString();
                 if (string.IsNullOrEmpty(f.Number)) f.Number = max.ToString();
             }
+        }
+
+        /// <summary>
+        /// 系列级 Web = 各册里出现次数最多的那个链接（通常就是全组共用的作品主页）。
+        /// 只有某一册不同（单册条目页）时，不会让它顶替系列链接。
+        /// </summary>
+        static void FixSeriesWeb(ScrapeSeries s)
+        {
+            if (s.Existing == null || s.Files.Count == 0) return;
+
+            var best = "";
+            var bestCount = 0;
+            foreach (var g in s.Files.Where(f => !string.IsNullOrEmpty(f.Web))
+                                     .GroupBy(f => f.Web, StringComparer.OrdinalIgnoreCase))
+            {
+                if (g.Count() > bestCount) { bestCount = g.Count(); best = g.Key; }
+            }
+            if (best.Length == 0) return;
+
+            // 全组只有一本时，它就是系列（不区分单册/系列链接）
+            s.Existing.Web = s.Files.Count == 1 ? s.Files[0].Web : best;
+        }
+
+        /// <summary>
+        /// 单册链接只留「这一本自己的条目页」。写出去时没填单册链接的那一册本来就会
+        /// 沿用它所在系列的链接，所以包里读回来的、与系列链接一字不差的那些，属于
+        /// 上一轮的兜底结果，不是抓到的单册页 —— 不清掉的话：
+        /// 一是单册那栏永远显示着系列链接，看着像抓错了；二是「每卷链接」再想补进来时
+        /// 会被这段旧值挡住（界面只在单册链接空着时才填），永远补不进去。
+        /// </summary>
+        static void ClearInheritedWeb(ScrapeSeries s)
+        {
+            if (s.Files.Count < 2 || s.Existing == null) return;   // 单本系列：那一本本来就是系列
+            var series = (s.Existing.Web ?? "").Trim();
+            if (series.Length == 0) return;                        // 系列链接都没有，别把唯一线索也清掉
+            foreach (var f in s.Files)
+                if (string.Equals((f.Web ?? "").Trim(), series, StringComparison.OrdinalIgnoreCase))
+                    f.Web = "";
         }
 
         /// <summary>
@@ -443,9 +519,9 @@ namespace ComicManager
             return ComicInfo.Render(m, opt);
         }
 
-        public static string PreviewSeriesJson(Metadata meta, int totalIssues)
+        public static string PreviewSeriesJson(Metadata meta, int totalIssues, string target)
         {
-            return SeriesJson.Build(meta.Clone(), totalIssues);
+            return SeriesJson.Build(meta.Clone(), totalIssues, target);
         }
 
         // ------------------------------------------------------------ 写入
@@ -517,30 +593,49 @@ namespace ComicManager
             {
                 if (!Directory.Exists(job.Dir)) throw new Exception("系列目录不存在");
 
-                var multi = job.Files.Count > 1;
+                // 系列级的那几项（号 / 标题 / 特殊类型 / 书号）是「每本自己的」，
+                // 这里必须按**系列**判断是不是多本，而不是按这一批次发了几本：
+                // 只应用一本时，若当成单本系列，就会把系列级那份（来自第一本 = 番外）的
+                // Format=Special 和它的标题一起写进这一册，看起来就是「清空号以后变 SP、还多了标题」。
+                var multi = job.MultiSeries;
                 int changed = 0, skipped = 0, failed = 0;
 
                 foreach (var f in job.Files)
                 {
                     var m = job.Meta.Clone();
-                    // pair 的格式是 "卷|话|单册标题|特殊类型|ISBN"，任一段可以为空
+                    // pair 是 "卷|话|单册标题|特殊类型|ISBN|单册链接|本册简介"，前端固定发满 7 段。
+                    // 7 段都在，就说明「这一段发的就是最终值」：空串代表用户特意清空了它，
+                    // 必须覆盖系列级那份。以前用 Length>0 做守卫，清空会被系列级顶回来 ——
+                    // 单本系列最明显（系列级就是这一本，删了号等于没删）。
                     var parts = (f.Value ?? "").Split('|');
+                    var full = parts.Length >= 7;
                     if (parts.Length >= 2)
                     {
-                        if (parts[0].Length > 0) m.Volume = parts[0];
-                        if (parts[1].Length > 0) m.Number = parts[1];
+                        if (full || parts[0].Length > 0) m.Volume = parts[0];
+                        if (full || parts[1].Length > 0) m.Number = parts[1];
                     }
-                    if (parts.Length >= 3 && parts[2].Length > 0) m.Title = parts[2];
+                    if (parts.Length >= 3 && (full || parts[2].Length > 0)) m.Title = parts[2];
                     else if (multi) m.Title = "";   // 多本系列不共用同一个书名，让服务器用「系列名 + 号」
 
                     // 番外标记是本级的：同一系列里正传和番外混放时，
                     // 不能把系列级的 Special 套到每一本上，也不能让番外的标记漏掉。
-                    if (parts.Length >= 4)
+                    if (parts.Length >= 4 && (full || parts[3].Length > 0)) m.Format = parts[3];
+                    else if (multi) m.Format = "";
+
+                    // ISBN 是每本一条：多本系列里，系列级那条（来源一般只给首卷或根本没有）
+                    // 不能套到每一本上 —— 否则 18 卷共用一个 ISBN，查书全串味。
+                    if (parts.Length >= 5 && (full || parts[4].Length > 0)) m.GTIN = parts[4];
+                    else if (multi) m.GTIN = "";
+
+                    // 单册链接：这一本自己的商品页/条目页。空着就沿用系列级的 Web。
+                    if (parts.Length >= 6 && parts[5].Trim().Length > 0) m.Web = parts[5].Trim();
+
+                    // 本册简介：只有显式填了才覆盖系列简介（简介里可能有 '|'，后面整段拼回去）
+                    if (parts.Length >= 7)
                     {
-                        if (parts[3].Length > 0) m.Format = parts[3];
-                        else if (multi) m.Format = "";
+                        var own = string.Join("|", parts.Skip(6).ToArray()).Trim();
+                        if (own.Length > 0) m.Summary = own;
                     }
-                    if (parts.Length >= 5 && parts[4].Length > 0) m.GTIN = parts[4];
 
                     int pages = 0;
                     try
@@ -554,14 +649,37 @@ namespace ComicManager
                     }
                     catch { }
 
-                    var r = MetaWriter.WriteCbz(f.Key, m, opt, pages);
+                    // 用户明确发满了 7 段 → 这一段发的就是最终值，缺号互补必须关掉。
+                    // 否则「清空话、留着卷」会被互补抄回来，渲染和磁盘一模一样 → 判定未变化 → 不写盘。
+                    var oneOpt = opt;
+                    if (full)
+                    {
+                        oneOpt = opt.Clone();
+                        // 只有用户亲手改过的册才完全按「发的值就是最终值」处理：
+                        // 缺号互补、番外清卷号全关。纯刮削写入的册仍走档位规则
+                        //（番外照样不挂卷号，不能因为改成 7 段协议就把这条丢了）。
+                        if (job.ManualFiles.Contains(f.Key))
+                        {
+                            oneOpt.Meta.FillMissingNumbers = false;
+                            oneOpt.Meta.ManualEdit = true;
+                        }
+                    }
+
+                    var r = MetaWriter.WriteCbz(f.Key, m, oneOpt, pages);
+                    // 每本一行：把「实际写进去的卷 / 话」摊在日志里。
+                    // 界面上看不出来到底发了什么，只报「成功 N 本」时，
+                    // 清空号没清掉根本无从判断是没发出去还是没写进去。
+                    var shown = Path.GetFileName(r.File);
+                    var volTxt = string.IsNullOrEmpty(m.Volume) ? "(空)" : m.Volume;
+                    var numTxt = string.IsNullOrEmpty(m.Number) ? "(空)" : m.Number;
+                    var tail = "　卷 " + volTxt + "　话 " + numTxt;
                     if (r.Err != null)
                     {
                         failed++;
-                        Log("失败 " + Path.GetFileName(r.File) + "：" + r.Err, "e");
+                        Log("失败 " + shown + "：" + r.Err, "e");
                     }
-                    else if (r.Skipped) { skipped++; }
-                    else changed++;
+                    else if (r.Skipped) { skipped++; Log(shown + tail + "　跳过（文件里已经是这样）", "i"); }
+                    else { changed++; Log(shown + tail, "i"); }
                 }
 
                 MetaWriter.WriteSeriesAssets(job.Dir, job.Meta, job.TotalIssues, opt);
@@ -592,12 +710,16 @@ namespace ComicManager
         // ------------------------------------------------------------ 模型 ⇄ JSON
         static readonly string[] Fields =
         {
-            "series", "seriesSort", "localizedSeries", "volume", "number", "count",
+            "series", "seriesSort", "localizedSeries",
+            "seriesChinese", "seriesOriginal", "seriesEnglish",
+            "volume", "number", "count",
             "title", "summary", "year", "month", "day", "pageCount",
             "publisher", "imprint",
             "writer", "penciller", "inker", "colorist", "letterer", "coverArtist", "editor", "translator",
             "genre", "tags", "characters", "teams", "locations", "web",
             "language", "ageRating", "format", "manga", "gtin", "scanInformation", "notes",
+            "aniListId", "malId", "mangaBakaId", "hardcoverId",
+            "comicVineId", "metronId", "comicBookRoundupId",
             "seriesGroup", "storyArc", "storyArcNumber", "alternateSeries", "alternateNumber",
             "coverUrl", "coverUrlZh", "coverUrlOriginal", "sourceName", "sourceId", "sourceUrl"
         };
@@ -615,6 +737,8 @@ namespace ComicManager
             };
 
             m.Series = g("series"); m.SeriesSort = g("seriesSort"); m.LocalizedSeries = g("localizedSeries");
+            m.SeriesChinese = g("seriesChinese"); m.SeriesOriginal = g("seriesOriginal");
+            m.SeriesEnglish = g("seriesEnglish");
             m.Volume = g("volume"); m.Number = g("number"); m.Count = g("count");
             m.Title = g("title"); m.Summary = g("summary");
             m.Year = g("year"); m.Month = g("month"); m.Day = g("day"); m.PageCount = g("pageCount");
@@ -627,6 +751,9 @@ namespace ComicManager
             m.Web = g("web");
             m.LanguageISO = g("language"); m.AgeRating = g("ageRating"); m.Format = g("format");
             m.Manga = g("manga"); m.GTIN = g("gtin");
+            m.AniListId = g("aniListId"); m.MalId = g("malId"); m.MangaBakaId = g("mangaBakaId");
+            m.HardcoverId = g("hardcoverId"); m.ComicVineId = g("comicVineId");
+            m.MetronId = g("metronId"); m.ComicBookRoundupId = g("comicBookRoundupId");
             m.ScanInformation = g("scanInformation"); m.Notes = g("notes");
             m.SeriesGroup = g("seriesGroup"); m.StoryArc = g("storyArc"); m.StoryArcNumber = g("storyArcNumber");
             m.AlternateSeries = g("alternateSeries"); m.AlternateNumber = g("alternateNumber");
@@ -645,6 +772,8 @@ namespace ComicManager
                 return d;
             }
             d["series"] = m.Series; d["seriesSort"] = m.SeriesSort; d["localizedSeries"] = m.LocalizedSeries;
+            d["seriesChinese"] = m.SeriesChinese; d["seriesOriginal"] = m.SeriesOriginal;
+            d["seriesEnglish"] = m.SeriesEnglish;
             d["volume"] = m.Volume; d["number"] = m.Number; d["count"] = m.Count;
             d["title"] = m.Title; d["summary"] = m.Summary;
             d["year"] = m.Year; d["month"] = m.Month; d["day"] = m.Day; d["pageCount"] = m.PageCount;
@@ -657,6 +786,9 @@ namespace ComicManager
             d["web"] = m.Web;
             d["language"] = m.LanguageISO; d["ageRating"] = m.AgeRating; d["format"] = m.Format;
             d["manga"] = m.Manga; d["gtin"] = m.GTIN;
+            d["aniListId"] = m.AniListId; d["malId"] = m.MalId; d["mangaBakaId"] = m.MangaBakaId;
+            d["hardcoverId"] = m.HardcoverId; d["comicVineId"] = m.ComicVineId;
+            d["metronId"] = m.MetronId; d["comicBookRoundupId"] = m.ComicBookRoundupId;
             d["scanInformation"] = m.ScanInformation; d["notes"] = m.Notes;
             d["seriesGroup"] = m.SeriesGroup; d["storyArc"] = m.StoryArc; d["storyArcNumber"] = m.StoryArcNumber;
             d["alternateSeries"] = m.AlternateSeries; d["alternateNumber"] = m.AlternateNumber;

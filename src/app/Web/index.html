@@ -54,6 +54,9 @@ main.scrape{grid-template-columns:minmax(272px,300px) minmax(300px,332px) minmax
 .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px 13px;flex:none;
 overflow:hidden}   /* 窗口矮的时候在面板边界裁掉，别让内容溢到页面外 */
 .col3 .panel{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+/* 需要「头部固定 + 列表自己滚」的面板：系列列表、搜索结果都用它 */
+.panel.stack{display:flex;flex-direction:column}
+.panel.stack>*:last-child{min-height:0}
 .act{margin-top:auto}
 
 h2{font-size:11.5px;font-weight:600;margin:0 0 8px;color:var(--dim);letter-spacing:.2px;
@@ -106,12 +109,30 @@ border-radius:50%;background:#8C8C8C;transition:.15s}
 .switch input:checked+.track{background:var(--accent);border-color:var(--accent)}
 .switch input:checked+.track::after{transform:translateX(16px);background:#fff}
 
+/* 数据库多选：网格自适应，条目变多自动换行（现在三个，以后加源不用改布局） */
+.dbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(106px,1fr));gap:4px;
+max-height:112px;overflow-y:auto;overflow-x:hidden;padding:1px}
+.db{display:flex;align-items:center;gap:6px;border:1px solid #DCDCDC;border-radius:5px;
+background:#FBFBFB;padding:3px 7px;font-size:11.5px;color:var(--muted);cursor:pointer;
+transition:.12s;min-width:0}
+.db input{display:none}
+.db .dot{width:8px;height:8px;border-radius:50%;border:1px solid #9A9A9A;background:#fff;flex:none}
+.db .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.db:hover{border-color:#C4C4C4}
+.db.on{border-color:var(--accent);background:var(--soft);color:var(--accent);font-weight:600}
+.db.on .dot{background:var(--accent);border-color:var(--accent)}
+
+/* 元数据标题里的系列路径：太长就省略，鼠标悬停看全路径 */
+.epath{display:inline-block;max-width:46%;overflow:hidden;text-overflow:ellipsis;
+white-space:nowrap;vertical-align:bottom;margin-left:8px;font-size:11px;color:#A0A0A0}
+
 /* 右栏 */
 .barwrap{height:4px;background:#E6E6E6;border-radius:2px;overflow:hidden;margin:2px 0 7px;flex:none}
 .bar{height:100%;width:0;background:var(--accent);transition:width .3s;border-radius:2px}
 .stat{display:flex;gap:13px;font-size:11.5px;color:var(--muted);flex-wrap:wrap;margin-bottom:8px;flex:none}
 .stat b{color:var(--ink);font-weight:600}
-.log{flex:0 0 auto;height:84px;overflow-y:auto;background:#FAFAFA;border:1px solid var(--line);
+/* 日志区跟着面板长：面板高多少就用多少，不再固定 84px 留一大片空白 */
+.log{flex:1 1 0;min-height:56px;overflow-y:auto;background:#FAFAFA;border:1px solid var(--line);
 border-radius:6px;padding:7px 10px;font-family:Consolas,"Cascadia Mono",monospace;
 font-size:11px;line-height:1.6;user-select:text}
 .log div{white-space:pre-wrap;word-break:break-all}
@@ -132,16 +153,18 @@ color:var(--warn);font-weight:600}
 .tabs{display:flex;gap:4px}
 .tabs button{flex:1;font-size:12px;padding:5px 0}
 .tabs button.on{background:var(--soft);border-color:var(--accent);color:var(--accent);font-weight:600}
-.tabs.sm{gap:3px}.tabs.sm button{padding:3px 0;font-size:11.5px}
+.tabs.sm{gap:3px}.tabs.sm button{flex:none;padding:3px 12px;font-size:11.5px;min-height:23px}
 .empty{color:var(--dim);font-size:11.5px;padding:18px 0;text-align:center}
 
 /* ---------------- 刮削页 ---------------- */
 .slist{flex:1 1 0;min-height:70px;overflow-y:auto;overflow-x:hidden;border:1px solid var(--line);
 border-radius:6px}
-.srow{display:flex;align-items:center;gap:7px;padding:5px 8px;border-bottom:1px solid var(--line2);
+.srow{position:relative;display:flex;align-items:center;gap:7px;padding:5px 8px;border-bottom:1px solid var(--line2);
 cursor:pointer;transition:.1s}
 .srow:hover{background:#F8F8F8}
 .srow.on{background:var(--soft)}
+/* 多选（Ctrl / Shift）的标记：左边一条竖线，主选中仍是 on 的底色 */
+.srow.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
 .srow .nm{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow .ct{font-size:11px;color:var(--dim);flex:none;margin-left:2px}
 .srow .pill{flex:none}
@@ -163,7 +186,7 @@ scrollbar-width:thin;scrollbar-color:#BFBFBF transparent}
 .cand .t2 .pill{font-size:9.5px;margin-right:4px;padding:0 4px}
 
 /* 表单：两列网格，内部滚动 */
-.form{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:2px;padding-bottom:4px;
+.form{flex:1 1 0;min-height:0;overflow-y:auto;padding-right:2px;padding-bottom:8px;
 scrollbar-width:thin;scrollbar-color:#BFBFBF transparent}
 .form::-webkit-scrollbar{width:9px}
 .form::-webkit-scrollbar-thumb{background:#C8C8C8;border-radius:5px;border:2px solid #FFF}
@@ -181,9 +204,28 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fld input,.fld select,.fld textarea{font-size:12px;padding:3px 7px}
 .fld textarea{height:52px}
 
-.pre{flex:0 0 auto;height:84px;overflow:auto;background:#FAFAFA;border:1px solid var(--line);
+.pre{flex:1 1 0;min-height:56px;overflow:auto;background:#FAFAFA;border:1px solid var(--line);
 border-radius:6px;padding:7px 10px;font-family:Consolas,"Cascadia Mono",monospace;font-size:11px;
 line-height:1.55;white-space:pre;user-select:text}
+/* 预览里放表格时切成普通流：路径用等宽排，比一坨纯文本好扫 */
+.pre.html{white-space:normal;padding:0;font-family:inherit;font-size:12px}
+.pre.html .phead{padding:7px 10px;border-bottom:1px solid var(--line2);color:var(--dim);font-size:11.5px}
+.pre.html .phead b{color:#3A3A3A}
+.pre.html table.prev{margin:0;border:none}
+.pre.html table.prev th{position:sticky;top:0;background:#F4F4F4;z-index:1}
+.pre.html table.prev{width:100%;table-layout:fixed}
+.pre.html table.prev td{font-size:11.5px;padding:4px 7px}
+.pre.html table.prev th{padding:4px 7px;font-size:11px}
+.pre.html td.ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pre.html .pdir{padding:6px 10px;background:#F7F7F7;border-top:1px solid var(--line2);
+border-bottom:1px solid var(--line2);font-size:11.5px}
+.pre.html .pdir .arrow{color:var(--dim);margin:0 5px}
+.pre.html .mono{font-family:Consolas,"Cascadia Mono",monospace}
+.pre.html .sub{padding:6px 10px;font-weight:600;font-size:11.5px;color:#4A4A4A;
+background:#F4F4F4;border-bottom:1px solid var(--line2)}
+.pre.html pre{margin:0;padding:8px 10px;white-space:pre;font-family:Consolas,"Cascadia Mono",monospace;
+font-size:11px;line-height:1.5}
+.pre.html .pill{font-size:10.5px}
 .subtabs{display:flex;gap:4px;margin-bottom:6px;flex:none}
 .subtabs button{flex:none;min-height:24px;padding:2px 10px;font-size:11.5px}
 .subtabs button.on{background:var(--soft);border-color:var(--accent);color:var(--accent);font-weight:600}
@@ -238,29 +280,29 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
   <section class="page on" id="pg-home">
     <div class="nav">
       <span class="tab on" onclick="go('home')">首页</span>
-      <span class="tab" onclick="go('convert')">格式转换</span>
-      <span class="tab" onclick="go('scrape')">元数据刮削</span>
+      <span class="tab" onclick="go('convert')">出版漫画格式转换</span>
+      <span class="tab" onclick="go('scrape')">出版漫画元数据刮削</span>
       <span class="sp"></span>
       <span class="tip">两个功能共用同一份源目录设置</span>
     </div>
 
     <div class="home">
-      <div class="brand">COMICMANAGER · 漫画库格式转换与元数据刮削</div>
+      <div class="brand">COMICMANAGER · 出版漫画格式转换与元数据刮削</div>
       <h1>要做什么？</h1>
       <div class="sub">选一个进入，随时可以从顶部切回来</div>
       <div class="cards">
         <div class="card" onclick="go('convert')">
           <div class="ico"><svg viewBox="0 0 24 24"><rect x="3.4" y="6.4" width="6.2" height="11.2" rx="1.2"/><path d="M11.2 12h4.4" stroke-width="1.9"/><path d="M13.6 9.9l2.2 2.1-2.2 2.1" stroke-width="1.9"/><rect x="17.4" y="8.2" width="3.4" height="7.6" rx="1.1"/></svg></div>
-          <div class="t">格式转换</div>
+          <div class="t">出版漫画格式转换</div>
           <div class="d">EPUB 拆成 CBZ、按 OPF 页序重排，或者把已有 CBZ 在 Kavita / Komga 的命名与元数据格式之间互转。</div>
           <div class="k">写入 ComicInfo.xml · 图片字节不动</div>
         </div>
 
         <div class="card" onclick="go('scrape')">
           <div class="ico"><svg viewBox="0 0 24 24"><circle cx="10.6" cy="10.6" r="6.1"/><path d="M15.2 15.2L21 21"/><path d="M7.6 10.6h6M10.6 7.6v6"/></svg></div>
-          <div class="t">元数据刮削</div>
-          <div class="d">按系列从网络源查资料，也可以自己填。一次写进包内 ComicInfo.xml，顺带生成 Komga 的 series.json 与系列封面。</div>
-          <div class="k">Komga / Kavita / 双兼容 · 可手动补全</div>
+          <div class="t">出版漫画元数据刮削</div>
+          <div class="d">按系列从网络源查资料，也可以自己填。一次写进包内 ComicInfo.xml，顺带生成 series.json 侧车与系列封面。</div>
+          <div class="k">Kavita Custom / Komga · 可手动补全</div>
         </div>
       </div>
     </div>
@@ -270,8 +312,8 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
   <section class="page" id="pg-convert">
     <div class="nav">
       <span class="tab" onclick="go('home')">首页</span>
-      <span class="tab on" onclick="go('convert')">格式转换</span>
-      <span class="tab" onclick="go('scrape')">元数据刮削</span>
+      <span class="tab on" onclick="go('convert')">出版漫画格式转换</span>
+      <span class="tab" onclick="go('scrape')">出版漫画元数据刮削</span>
       <span class="sp"></span>
       <span class="tip" id="convTip"></span>
     </div>
@@ -331,17 +373,7 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
         </div>
 
         <div class="panel">
-          <h2>阅读设置</h2>
-          <div class="field">
-            <label class="lbl">阅读方向</label>
-            <div class="seg">
-              <input type="radio" name="reading" id="rd_auto" value="auto"><label for="rd_auto">自动判断</label>
-              <input type="radio" name="reading" id="rd_rtl" value="rtl"><label for="rd_rtl">右开本</label>
-              <input type="radio" name="reading" id="rd_ltr" value="ltr"><label for="rd_ltr">左开本</label>
-              <input type="radio" name="reading" id="rd_ttb" value="ttb"><label for="rd_ttb">上到下</label>
-            </div>
-            <div class="hint" id="readHint"></div>
-          </div>
+          <h2>文字与番外</h2>
           <div class="field">
             <label class="lbl">繁转简</label>
             <div class="seg">
@@ -360,6 +392,11 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
               <input type="radio" name="special" id="sp_series" value="series"><label for="sp_series">独立成系列</label>
               <input type="radio" name="special" id="sp_num" value="number"><label for="sp_num">接在正传后</label>
             </div>
+            <div class="hint">「接在正传后」把番外写成 3 → 2.5 这类号，插在正传中间（Komga 档用）。</div>
+          </div>
+          <div class="hint" style="padding-top:2px;border-top:1px solid var(--line2);margin-top:8px">
+            阅读方向（左开 / 右开）不在这里判定：转换只写书名、卷号与页数，
+            方向交给「元数据刮削」按来源资料写进 ComicInfo 的 Manga 字段。
           </div>
         </div>
 
@@ -421,8 +458,8 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
   <section class="page" id="pg-scrape">
     <div class="nav">
       <span class="tab" onclick="go('home')">首页</span>
-      <span class="tab" onclick="go('convert')">格式转换</span>
-      <span class="tab on" onclick="go('scrape')">元数据刮削</span>
+      <span class="tab" onclick="go('convert')">出版漫画格式转换</span>
+      <span class="tab on" onclick="go('scrape')">出版漫画元数据刮削</span>
       <span class="sp"></span>
       <span class="tip">Ctrl+E 打开选中漫画所在目录</span>
     </div>
@@ -440,75 +477,93 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
           </div>
         </div>
 
+        <!-- 元数据：选哪些数据库、要不要互相补、要不要去别的库换 id -->
         <div class="panel">
-          <h2>抓取与写入</h2>
-          <div class="gt">元数据来源</div>
-          <div class="switches one" id="srcPick">
-            <div class="switch"><span class="t">Bangumi（中文书名 / 出版社）</span>
-              <input type="checkbox" id="sp_bangumi" data-src="bangumi"><label class="track" for="sp_bangumi"></label></div>
-            <div class="switch"><span class="t">MangaUpdates（作者 / 年份）</span>
-              <input type="checkbox" id="sp_mu" data-src="mangaupdates"><label class="track" for="sp_mu"></label></div>
-            <div class="switch"><span class="t">MangaDex（封面 / 简介）</span>
-              <input type="checkbox" id="sp_md" data-src="mangadex"><label class="track" for="sp_md"></label></div>
+          <h2>元数据</h2>
+          <div class="gt">数据库</div>
+          <div class="dbs" id="srcPick">
+            <label class="db" title="Bangumi：中文书名、出版社、卷数最全">
+              <input type="checkbox" data-src="bangumi"><i class="dot"></i><span class="nm">Bangumi</span></label>
+            <label class="db" title="MangaUpdates：作者、年份、类型最全">
+              <input type="checkbox" data-src="mangaupdates"><i class="dot"></i><span class="nm">MangaUpdates</span></label>
+            <label class="db" title="MangaDex：封面最清晰，简介多语言">
+              <input type="checkbox" data-src="mangadex"><i class="dot"></i><span class="nm">MangaDex</span></label>
           </div>
-          <div class="switch" style="margin-top:6px"><span class="t">缺字段时用其他来源补齐</span>
-            <input type="checkbox" id="stFill"><label class="track" for="stFill"></label></div>
-          <button class="wide" onclick="doBatchMatch()" id="btnBatch">批量取首条（只填不写）</button>
+          <div class="hint">可多选；多选时按匹配度取最佳条目，再用勾选的源互相补空字段。</div>
+          <div class="switches one" style="margin-top:6px">
+            <div class="switch" title="选中的条目缺作者 / 出版社 / 分级这些字段时，去其他勾选的源找同名条目补上；已有值一律不动。">
+              <span class="t">从其他数据库补充</span>
+              <input type="checkbox" id="stFill"><label class="track" for="stFill"></label></div>
+          </div>
+          <button class="wide" style="margin-top:6px" id="btnExtra" onclick="doExternalIds()"
+                  title="对选中的、已经刮过（有原名或英文名）的系列，去 AniList / MAL / MangaBaka 反查 id，只补 id 不碰别的字段">
+            获取额外数据库 id<span id="extraCount"></span></button>
+          <div class="hint">只对已刮过、有<b>原名 / 英文名</b>的系列有效；AniList、MAL、MangaBaka 可直查，其余四家要 key。</div>
+        </div>
 
-          <div class="gt" style="margin-top:9px">写入</div>
+        <!-- 写入：目标档位 + 产物开关 + 重命名 -->
+        <div class="panel">
+          <h2>写入</h2>
           <div class="seg" id="stgTarget">
-            <input type="radio" name="starget" id="st_both" value="both"><label for="st_both">双兼容</label>
+            <input type="radio" name="starget" id="st_kc" value="kavitacustom"><label for="st_kc">Kavita Custom</label>
             <input type="radio" name="starget" id="st_kav" value="kavita"><label for="st_kav">Kavita</label>
             <input type="radio" name="starget" id="st_kom" value="komga"><label for="st_kom">Komga</label>
           </div>
           <div class="hint" id="stgHint" style="margin-top:3px"></div>
           <div class="switches" style="margin-top:6px">
-            <div class="switch"><span class="t">拆卷号后缀</span>
-              <input type="checkbox" id="stSplit"><label class="track" for="stSplit"></label></div>
-            <div class="switch"><span class="t">备份 .bak</span>
+            <div class="switch" title="写入前把原文件复制一份成 xxx.cbz.bak。只保留第一份，后面的写入不覆盖它。">
+              <span class="t">写前备份 .bak</span>
               <input type="checkbox" id="stBackup"><label class="track" for="stBackup"></label></div>
-            <div class="switch" title="把覆盖前的完整 ComicInfo 以注释附在文件末尾，改了什么都能查回来；服务器解析时忽略注释。">
-              <span class="t">留档原 XML</span>
-              <input type="checkbox" id="stKeepRaw"><label class="track" for="stKeepRaw"></label></div>
-            <div class="switch"><span class="t">series.json</span>
-              <input type="checkbox" id="stSeriesJson"><label class="track" for="stSeriesJson"></label></div>
-            <div class="switch"><span class="t">下载封面</span>
+            <div class="switch" title="Kavita 系档位的写号规则：正传只写卷（Volume），话只写话（Number），两个字段不互相抄。单册里手动改过的册以手动值为准。切到 Kavita / Kavita Custom 档自动打开，可以手动关掉；Komga 档不生效。">
+              <span class="t">不写 Number</span>
+              <input type="checkbox" id="stSkipNum"><label class="track" for="stSkipNum"></label></div>
+            <div class="switch" title="番外的卷号写成 0（而不是清空），Number 按原有顺序保留 —— Specials 区里靠 Number 排序，也不会跟正传挤进同一张卷卡片。独立开关：关掉则番外卷号直接清空。Kavita Custom 档默认打开；Komga 档不生效。">
+              <span class="t">番外卷号占 0</span>
+              <input type="checkbox" id="stSpVolZero"><label class="track" for="stSpVolZero"></label></div>
+            <div class="switch" title="把来源站的封面下载成系列目录里的 cover.jpg。">
+              <span class="t">下载系列封面</span>
               <input type="checkbox" id="stCover"><label class="track" for="stCover"></label></div>
-            <div class="switch"><span class="t">覆盖封面</span>
+            <div class="switch" title="写 ComicInfo 的 SeriesGroup。Kavita 只认这个字段自动建「收藏」（Collections）——同 IP 的多部作品会归到一个收藏里；关掉就不写，Kavita 也不会自动建。">
+              <span class="t">生成收藏</span>
+              <input type="checkbox" id="stCollections"><label class="track" for="stCollections"></label></div>
+            <div class="switch" title="目录里已经有 cover.jpg 时也重新下载覆盖。">
+              <span class="t">覆盖已有封面</span>
               <input type="checkbox" id="stCoverOver"><label class="track" for="stCoverOver"></label></div>
           </div>
+          <div class="hint" style="margin-top:4px" id="presetHint"></div>
           <div class="fgrid two" style="margin-top:6px">
             <div class="fld"><label>封面版本</label>
-              <select id="stCoverPick">
-                <option value="auto">自动（中文优先）</option>
+              <select id="stCoverPick" title="自动＝优先中文版，没有就用原版">
+                <option value="auto">自动</option>
                 <option value="zh">中文版</option>
-                <option value="original">原始版</option>
+                <option value="original">原版</option>
               </select></div>
             <div class="fld"><label>封面尺寸</label>
-              <select id="stCoverW">
+              <select id="stCoverW" title="下载后按这个宽度重编码成 JPEG">
                 <option value="0">原图</option>
-                <option value="800">≤800 宽</option>
-                <option value="1200">≤1200 宽</option>
+                <option value="800">800 宽</option>
+                <option value="1200">1200 宽</option>
               </select></div>
           </div>
           <div class="row" style="align-items:center;margin-top:6px">
-            <div class="switch" style="flex:1"
-                 title="默认关。开了以后番外会写成 0.5 / 1.5 这类号（Komga 档），插在正传之间。">
-              <span class="t">番外写小数号</span>
-              <input type="checkbox" id="stSpecialNum"><label class="track" for="stSpecialNum"></label></div>
-            <span class="t" style="font-size:11.5px;color:var(--muted);margin-right:6px">并发</span>
-            <div style="width:64px" title="同时写入的系列数">
+            <span style="font-size:11.5px;color:var(--muted)">写入并发</span>
+            <span style="flex:1"></span>
+            <div style="width:62px" title="同时写入的系列数">
               <input type="number" id="stThreads" min="1" max="8">
             </div>
           </div>
 
           <details class="more" style="margin-top:7px">
-            <summary>按模板重命名文件</summary>
+            <summary>按模板重命名文件夹与文件</summary>
             <div style="margin-top:5px">
-              <input type="text" id="stRenTpl" placeholder="{series}/{id}"
-                     title="相对库根目录的路径，不含扩展名">
+              <input type="text" id="stRenTpl" placeholder="{series}/{prefix}{id}"
+                     title="第一段是文件夹的新名字，最后一段是文件名，不含扩展名">
               <div class="hint" style="margin-top:3px">
-                变量：{series} {id} {volume} {number} {title} {year}；{id} 是 V01 / SP01。
+                <code>{series}</code> <code>{prefix}</code> <code>{id}</code> <code>{id3}</code>
+                <code>{vol}</code> <code>{num}</code> <code>{title}</code> <code>{year}</code>（不分大小写）<br>
+                <code>{prefix}</code> 是 V / SP，<code>{id}</code> 只有数字（两位 01），<code>{id3}</code> 三位（001），
+                想写成 V01 就用 <code>{prefix}{id}</code>。<br>
+                第一段 = 现有文件夹改成的名字，最后一段 = 每一本的文件名；<b>原地改名</b>，不会把书搬到别的文件夹。
               </div>
               <div class="row" style="margin-top:5px">
                 <button class="grow" onclick="doRename(true)">预览</button>
@@ -521,13 +576,23 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
 
       <!-- 第二栏：系列 / 候选 -->
       <section class="col">
-        <div class="panel" style="flex:1 1 0;min-height:0">
+        <!-- 这两块必须自己是 flex 列：里面的 .slist / .cands 要靠 flex:1 + min-height:0
+             才会出现内部滚动条。以前只是普通块，列表一长就把内容顶出可视区，滚不动也看不到。 -->
+        <div class="panel stack" style="flex:1 1 0;min-height:0">
           <h2>系列<span class="cnt" id="seriesCount"></span><span class="rt" id="seriesHint"></span></h2>
+          <div class="row" style="margin-bottom:6px;align-items:center">
+            <button id="btnSelAll" class="mini" onclick="selectAllSeries()" title="全选 / 全不选">全选</button>
+            <span style="flex:1"></span>
+            <button class="primary mini" id="btnAuto" onclick="doAutoScrape()"
+                    title="对选中的系列：搜索 → 取匹配度最高的一条 → 拉详情（含每卷 ISBN）→ 直接写入">
+              自动刮削<span id="autoCount"></span></button>
+          </div>
+          <div class="hint" style="margin:-2px 0 6px">点选一个；<b>Ctrl+点击</b>加选、<b>Shift+点击</b>选一段。</div>
           <div class="slist" id="seriesList"><div class="empty">先扫描目录</div></div>
         </div>
 
-        <div class="panel" style="flex:1 1 0;min-height:0">
-          <h2>搜索结果</h2>
+        <div class="panel stack" style="flex:1 1 0;min-height:0">
+          <h2>搜索结果<span class="rt" id="candCount"></span></h2>
           <div class="row">
             <input type="text" class="grow" id="term" placeholder="要查的系列名">
             <button onclick="doSearch()" id="btnSearch">搜索</button>
@@ -538,7 +603,7 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
 
       <!-- 第三栏：元数据（编辑 / 对比）、进度与预览 -->
       <section class="col col3">
-        <div class="panel" style="flex:3 1 0">
+        <div class="panel" style="flex:2 1 0">
           <h2>元数据<span class="cnt" id="editTitle"></span>
             <span class="rt">
               <span class="tabs sm" style="display:inline-flex">
@@ -548,92 +613,137 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
             </span>
           </h2>
           <div class="hint" id="editSrc" style="margin:-4px 0 6px"></div>
-          <div class="hint" id="formMore" style="margin:-2px 0 6px;display:none">↓ 表单还有内容（更多 / 简介），可滚动查看</div>
+          <div class="subtabs" id="scopeTabs">
+            <button id="tabSeries" class="on" onclick="scopeTab('series')">系列信息</button>
+            <button id="tabFile" onclick="scopeTab('file')">单册<span id="fileCount"></span></button>
+            <span style="flex:1"></span>
+          </div>
 
           <div class="form" id="form">
-            <div class="grp">
-              <div class="gt">系列</div>
-              <div class="fgrid">
-                <div class="fld full"><label>系列名（译名优先）</label><input type="text" id="f_series"></div>
-                <div class="fld"><label>原名（保留）</label><input type="text" id="f_localizedSeries"></div>
-                <div class="fld"><label>排序名</label><input type="text" id="f_seriesSort"></div>
-                <div class="fld"><label>总卷（话）数</label><input type="text" id="f_count"></div>
-                <div class="fld"><label>合集 / 书单</label><input type="text" id="f_seriesGroup"></div>
-                <div class="fld"><label>品牌 / 书系</label><input type="text" id="f_imprint"></div>
-                <div class="fld"><label>出版社</label><input type="text" id="f_publisher"></div>
-              </div>
-            </div>
-            <div class="grp">
-              <div class="gt">分册与号</div>
-              <div class="fld full" style="margin-bottom:5px">
-                <label>分册（选一本可单独改号 / 单独预览写入）</label>
-                <div class="chips" id="fileChips"></div>
-                <div class="hint" id="fileHint" style="margin-top:3px"></div>
-              </div>
-              <div class="fgrid">
-                <div class="fld"><label>卷 Volume</label><input type="text" id="f_volume"></div>
-                <div class="fld"><label>话 / 号 Number</label><input type="text" id="f_number"></div>
-                <div class="fld"><label>单册标题</label><input type="text" id="f_title"></div>
-                <div class="fld"><label>特殊类型</label>
-                  <select id="f_format">
-                    <option value="">普通</option>
-                    <option value="Special">Special（番外）</option>
-                    <option value="TPB">TPB</option>
-                    <option value="Annual">Annual</option>
-                    <option value="One-Shot">One-Shot</option>
-                    <option value="Omnibus">Omnibus</option>
-                  </select></div>
-                <div class="fld"><label>年份</label><input type="text" id="f_year"></div>
-                <div class="fld"><label>语言（这一本）</label>
-                  <select id="f_language" title="你收藏的这一版是什么语言，不是原作语言。中文版就选中文。">
-                    <option value="">不写</option>
-                    <option value="zh">zh 中文</option>
-                    <option value="zh-Hans">zh-Hans 简体</option>
-                    <option value="zh-Hant">zh-Hant 繁體</option>
-                    <option value="ja">ja 日文</option>
-                    <option value="en">en 英文</option>
-                    <option value="ko">ko 韩文</option>
-                  </select></div>
-              </div>
-            </div>
-            <div class="grp">
-              <div class="gt">阅读与分类</div>
-              <div class="fgrid">
-                <div class="fld"><label>阅读方向</label>
-                  <select id="f_manga">
-                    <option value="">不写（服务器自判）</option>
-                    <option value="YesAndRightToLeft">右开本</option>
-                    <option value="No">左开本 / 上到下</option>
-                  </select></div>
-                <div class="fld"><label>年龄分级</label>
-                  <select id="f_ageRating">
-                    <option value="">不写</option>
-                    <option value="Everyone">Everyone</option>
-                    <option value="Teen">Teen</option>
-                    <option value="Teen+">Teen+</option>
-                    <option value="Mature">Mature</option>
-                    <option value="Adults Only">Adults Only</option>
-                    <option value="Rating Pending">Rating Pending</option>
-                  </select></div>
-                <div class="fld"><label>ISBN</label><input type="text" id="f_gtin" placeholder="每本一个"></div>
-                <div class="fld"><label>作者</label><input type="text" id="f_writer"></div>
-                <div class="fld"><label>画师</label><input type="text" id="f_penciller"></div>
-                <div class="fld"><label>译者</label><input type="text" id="f_translator"></div>
-                <div class="fld full">
-                  <div class="two-up">
-                    <div><label>类型（逗号分隔）</label><input type="text" id="f_genre"></div>
-                    <div><label>标签（逗号分隔）</label><input type="text" id="f_tags"></div>
-                  </div>
+
+            <!-- ================= 系列信息（整组共用，写进每一本） ================= -->
+            <div id="paneSeries">
+              <div class="grp">
+                <div class="gt">系列</div>
+                <div class="fgrid">
+                  <div class="fld full"><label>系列名（显示用，中文优先）</label><input type="text" id="f_series"></div>
+                  <div class="fld"><label>中文名</label><input type="text" id="f_seriesChinese"
+                       title="中文译名。显示名不是中文时，Kavita 会用它当本地化别名"></div>
+                  <div class="fld"><label>原名（日 / 韩）</label><input type="text" id="f_seriesOriginal"
+                       title="原作名。拿它去 AniList / MangaBaka 反查 id 命中率最高"></div>
+                  <div class="fld"><label>英文名</label><input type="text" id="f_seriesEnglish"
+                       title="英文标题。AniList / MAL / ComicVine 都按英文名收条目的情况最多"></div>
+                  <div class="fld"><label>排序名</label><input type="text" id="f_seriesSort"></div>
+                  <div class="fld"><label>总卷（话）数</label><input type="text" id="f_count"></div>
+                  <div class="fld"><label>合集 / 书单</label><input type="text" id="f_seriesGroup"
+                       title="ComicInfo 的 SeriesGroup：Kavita 用它建 Collections，逗号分隔可归多个"></div>
+                  <div class="fld"><label>品牌 / 书系</label><input type="text" id="f_imprint"></div>
+                  <div class="fld"><label>出版社</label><input type="text" id="f_publisher"></div>
+                  <div class="fld"><label>故事线 StoryArc</label><input type="text" id="f_storyArc"
+                       title="ComicInfo 的 StoryArc：Kavita 会把它变成 Reading List"></div>
+                  <div class="fld"><label>故事线序号</label><input type="text" id="f_storyArcNumber"></div>
+                  <div class="fld"><label>别名系列 Alternate</label><input type="text" id="f_alternateSeries"
+                       title="ComicInfo 的 AlternateSeries：另一个作品名（Kavita 的 CBL 匹配也看它）"></div>
+                  <div class="fld"><label>别名序号</label><input type="text" id="f_alternateNumber"></div>
+                  <div class="fld"><label>年份</label><input type="text" id="f_year"></div>
+                  <div class="fld"><label>语言（这套书）</label>
+                    <select id="f_language" title="你收藏的这一版是什么语言，不是原作语言。中文版就选中文。">
+                      <option value="">不写</option>
+                      <option value="zh">zh 中文</option>
+                      <option value="zh-Hans">zh-Hans 简体</option>
+                      <option value="zh-Hant">zh-Hant 繁體</option>
+                      <option value="ja">ja 日文</option>
+                      <option value="en">en 英文</option>
+                      <option value="ko">ko 韩文</option>
+                    </select></div>
                 </div>
-                <details class="more" id="moreBox">
-                  <summary>更多：网络链接 / 简介</summary>
+                <details class="more" style="margin-top:6px">
+                  <summary>外部数据库 id（Kavita 的「外部元数据」）</summary>
                   <div class="fgrid" style="margin-top:5px">
-                    <div class="fld full"><label>网络链接</label><input type="text" id="f_web"></div>
-                    <div class="fld full"><label>备注（Notes）</label>
-                      <input type="text" id="f_notes" placeholder="刮削来源、原作等不占标准字段的信息"></div>
-                    <div class="fld full"><label>简介</label><textarea id="f_summary"></textarea></div>
+                    <div class="fld"><label>AniList</label><input type="text" id="f_aniListId"></div>
+                    <div class="fld"><label>MAL</label><input type="text" id="f_malId"></div>
+                    <div class="fld"><label>MangaBaka</label><input type="text" id="f_mangaBakaId"></div>
+                    <div class="fld"><label>Hardcover</label><input type="text" id="f_hardcoverId"></div>
+                    <div class="fld"><label>ComicVine</label><input type="text" id="f_comicVineId"></div>
+                    <div class="fld"><label>Metron</label><input type="text" id="f_metronId"></div>
+                    <div class="fld"><label>Comic Book Roundup</label><input type="text" id="f_comicBookRoundupId"></div>
+                  </div>
+                  <div class="hint" style="margin-top:3px">
+                    id 是作品级的，整组共用一份，写进每一本的 &lt;Web&gt; 里（Kavita 从这里认）。
+                    查不到的留空即可。
                   </div>
                 </details>
+              </div>
+
+              <div class="grp">
+                <div class="gt">阅读与分类</div>
+                <div class="fgrid">
+                  <div class="fld"><label>阅读方向</label>
+                    <select id="f_manga">
+                      <option value="">不写（服务器自判）</option>
+                      <option value="YesAndRightToLeft">右开本</option>
+                      <option value="No">左开本 / 上到下</option>
+                    </select></div>
+                  <div class="fld"><label>年龄分级</label>
+                    <select id="f_ageRating">
+                      <option value="">不写</option>
+                      <option value="Everyone">Everyone</option>
+                      <option value="Teen">Teen</option>
+                      <option value="Teen+">Teen+</option>
+                      <option value="Mature">Mature</option>
+                      <option value="Adults Only">Adults Only</option>
+                      <option value="Rating Pending">Rating Pending</option>
+                    </select></div>
+                  <div class="fld"><label>作者</label><input type="text" id="f_writer"></div>
+                  <div class="fld"><label>画师</label><input type="text" id="f_penciller"></div>
+                  <div class="fld"><label>译者</label><input type="text" id="f_translator"></div>
+                  <div class="fld full">
+                    <div class="two-up">
+                      <div><label>类型（逗号分隔）</label><input type="text" id="f_genre"></div>
+                      <div><label>标签（逗号分隔）</label><input type="text" id="f_tags"></div>
+                    </div>
+                  </div>
+                  <div class="fld full"><label>系列链接</label><input type="text" id="f_web"
+                       placeholder="这个作品的主页，写进每一本；单册有自己的链接就在「单册」里填"></div>
+                  <div class="fld full"><label>备注（Notes）</label>
+                    <input type="text" id="f_notes" placeholder="刮削来源、原作等不占标准字段的信息"></div>
+                  <div class="fld full"><label>系列简介</label><textarea id="f_summary"></textarea></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ================= 单册（每本自己的号 / 标题 / 书号 / 链接） ================= -->
+            <div id="paneFile" style="display:none">
+              <div class="grp">
+                <div class="chips" id="fileChips"></div>
+                <div class="hint" id="fileHint" style="margin-top:4px"></div>
+              </div>
+
+              <div class="grp">
+                <div class="gt">这一册</div>
+                <div class="fgrid">
+                  <div class="fld"><label>卷 Volume</label><input type="text" id="f_volume"></div>
+                  <div class="fld"><label>话 / 号 Number</label><input type="text" id="f_number"></div>
+                  <div class="fld"><label>单册标题</label><input type="text" id="f_title"></div>
+                  <div class="fld"><label>特殊类型</label>
+                    <select id="f_format">
+                      <option value="">普通</option>
+                      <option value="Special">Special（番外）</option>
+                      <option value="TPB">TPB</option>
+                      <option value="Annual">Annual</option>
+                      <option value="One-Shot">One-Shot</option>
+                      <option value="Omnibus">Omnibus</option>
+                    </select></div>
+                  <div class="fld full"><label>ISBN（这一本）</label>
+                    <input type="text" id="f_gtin" placeholder="13 位，没有就留空"></div>
+                  <div class="fld full"><label>单册链接</label>
+                    <input type="text" id="f_fweb" placeholder="留空则用「系列信息」里的系列链接"></div>
+                  <div class="fld full"><label>本册简介</label>
+                    <textarea id="f_fsummary" placeholder="留空则用「系列信息」里的系列简介"></textarea></div>
+                </div>
+                <div class="hint" style="margin-top:3px">
+                  外部数据库 id 是作品级的，在「系列信息」里统一填；这一册跟着系列走。
+                </div>
               </div>
             </div>
           </div>
@@ -648,19 +758,19 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
             </div>
           </div>
 
-          <div class="row" style="margin-top:7px;flex:none">
+          <div class="row" style="margin-top:7px;flex:none;border-top:1px solid var(--line2);padding-top:7px">
             <button onclick="clearPreview()" id="btnClearPrev"
                     title="清空下面的预览，并取消这一组「已应用」的标记；表单里的内容不动">清除预览</button>
             <button onclick="restoreOriginal()" id="btnRestore"
                     title="把「留档原 XML」里刮削之前的元数据填回表单（只改表单，不写盘）">元数据回退</button>
             <button class="grow" onclick="applySeries(true)" id="btnApplyOne"
-                    title="把当前表单写进这一本（先在分册选一个 V01 / SP01）">仅写入本组</button>
+                    title="只把这一本写进文件（先在分册选一个 V01 / SP01）">仅应用本册</button>
             <button class="grow primary" onclick="writeGroup()" id="btnWriteGroup"
-                    title="把当前表单写进这一组的所有册（分册停在「整组」时可用）">写入整组</button>
+                    title="把这一系列所有册（含各册单独改过的号 / 标题 / 书号 / 链接）一起写进文件">应用全部</button>
           </div>
         </div>
 
-        <div class="panel" style="flex:0 0 auto">
+        <div class="panel" style="flex:1 1 0;min-height:200px">
           <h2>进度<span class="rt" id="scPhase">待命</span></h2>
           <div class="barwrap"><div class="bar" id="scBar"></div></div>
           <div class="stat">
@@ -757,7 +867,8 @@ function addSrc(v){
 
 async function pick(el){
   if (typeof el === 'string') el = $(el);
-  const j = await (await fetch('/api/pick', {method:'POST', body:'{}'})).json();
+  /* 把输入框现有的值带上：有值就从那个目录打开，空着才用上次选过的目录 */
+  const j = await api('/api/pick', {path: (el && el.value ? el.value : '').trim()});
   if (j.path && !j.path.startsWith('ERR:')) { el.value = j.path; saveCfg(); }
   else if (j.path) toast('无法打开目录选择框，请手动输入路径：' + j.path, 3200);
 }
@@ -767,7 +878,7 @@ function getCfg(){
   return {
     sources: [...document.querySelectorAll('#srcList input')].map(i => i.value.trim()).filter(Boolean),
     out: $('out').value.trim(),
-    target: pickR('target'), reading: pickR('reading'),
+    target: pickR('target'),
     t2s: pickR('t2s') || null, compress: pickR('compress'), special: pickR('special'),
     name_template: $('tpl').value.trim() || '{series} v{vol:02d}',
     name_template_komga: '{series} #{vol3}',
@@ -783,16 +894,15 @@ function getCfg(){
     scrape_dirs: scanSources(),
     scrape_target: SC.target,
     scrape_backup: $('stBackup').checked,
-    scrape_series_json: $('stSeriesJson').checked,
+    scrape_skip_number: $('stSkipNum').checked,
+    scrape_sp_vol_zero: $('stSpVolZero').checked,
     scrape_cover: $('stCover').checked,
     scrape_cover_overwrite: $('stCoverOver').checked,
+    scrape_collections: $('stCollections').checked,
     scrape_threads: parseInt($('stThreads').value) || 3,
-    scrape_split_suffix: $('stSplit').checked,
     scrape_cover_pick: $('stCoverPick').value,
     scrape_cover_width: parseInt($('stCoverW').value) || 0,
     scrape_fill_missing: $('stFill').checked,
-    scrape_special_number: $('stSpecialNum').checked,
-    scrape_keep_raw: $('stKeepRaw').checked,
     rename_template: ($('stRenTpl').value || '').trim()
   };
 }
@@ -808,22 +918,22 @@ function saveCfg(){
   }, 400);
 }
 
-/* 把界面上的模式/方向/目标回传给主窗口：菜单勾号与状态栏都靠这条通道同步 */
+/* 把界面上的模式/目标回传给主窗口：菜单勾号与状态栏都靠这条通道同步 */
 function report(extra){
-  const targetEl = document.querySelector('input[name=target]:checked');
-  const readingEl = document.querySelector('input[name=reading]:checked');
+  const targetEl = document.querySelector('input[name=target]:checked') || {value:'both'};
+  const compressEl = document.querySelector('input[name=compress]:checked');
   const payload = {
     page: PAGE,
     mode: MODE,
-    reading: readingEl.value,
     target: targetEl.value,
     targetText: '目标 ' + ({both:'双兼容', kavita:'Kavita', komga:'Komga'}[targetEl.value] || '双兼容'),
-    readingText: '方向 ' + ({auto:'自动', rtl:'右开本', ltr:'左开本', ttb:'上到下'}[readingEl.value] || '自动'),
+    /* 转换页不再判定阅读方向，中间那一格改为显示压缩方式 */
+    readingText: '压缩 ' + (compressEl && compressEl.value === 'deflate' ? 'Deflate' : '不压缩'),
     jobs: '并发 ' + (parseInt($('jobs').value) || 6)
   };
   /* 刮削页用同一组状态栏槽位，但装的是它自己的参数 */
   if (PAGE === 'scrape'){
-    payload.targetText = '写入 ' + ({both:'双兼容', kavita:'Kavita', komga:'Komga'}[SC.target] || '双兼容');
+    payload.targetText = '写入 ' + ({kavitacustom:'Kavita Custom', kavita:'Kavita', komga:'Komga'}[SC.target] || 'Kavita Custom');
     const n = curSources().length;
     payload.readingText = '来源 ' + (n ? n + ' 个' : '未选');
     payload.jobs = '并发 ' + (parseInt($('stThreads').value) || 3);
@@ -840,16 +950,6 @@ function setTargetHint(){
   if (t === 'komga'){ h.textContent = '按 Number 排序，文件名用 #001 形式，番外可用小数号插入正传。'; $('tpl').value = '{series} #{vol3}'; }
 }
 
-function setReadHint(){
-  const h = $('readHint');
-  const v = document.querySelector('input[name=reading]:checked').value;
-  if (v === 'auto') h.textContent = '长条页判为上到下；否则按系列名与作者查证始发国：日本右开本，中/港台/韩左开本。'
-    + '结论写入 ComicInfo 并缓存，下次不联网。';
-  else if (v === 'rtl') h.textContent = '固定右开本：ComicInfo 的 Manga 写 YesAndRightToLeft。';
-  else if (v === 'ltr') h.textContent = '固定左开本：ComicInfo 的 Manga 写 No。';
-  else h.textContent = '固定上到下：适合条漫，Manga 写 No 并标注 ReadingMode=ttb。';
-}
-
 async function loadCfg(){
   const j = await (await fetch('/api/config')).json();
   const c = j.cfg || {};
@@ -860,7 +960,6 @@ async function loadCfg(){
   $('out').value = c.out || '';
   const setR = (n, v) => { const e = document.querySelector('input[name=' + n + '][value="' + v + '"]'); if (e) e.checked = true; };
   setR('target', c.target || 'both');
-  setR('reading', c.reading || 'auto');
   setR('t2s', c.t2s === null ? '' : (c.t2s || 'tw2s'));
   setR('compress', c.compress || 'store');
   setR('special', c.special || 'series');
@@ -874,7 +973,6 @@ async function loadCfg(){
   $('limitWrap').style.display = $('useLimit').checked ? '' : 'none';
   setMode(c.mode || 'convert', true);
   setTargetHint();
-  setReadHint();
   $('tpl').value = c.name_template || $('tpl').value;
 
   /* 刮削设置 */
@@ -882,19 +980,22 @@ async function loadCfg(){
   document.querySelectorAll('#srcPick input').forEach(i => {
     i.checked = srcs.indexOf(i.dataset.src) >= 0;
   });
-  applyScrapeTarget(c.scrape_target || 'both');
-  $('stSplit').checked = c.scrape_split_suffix !== false;
-  $('stBackup').checked = c.scrape_backup !== false;
-  $('stSeriesJson').checked = c.scrape_series_json !== false;
+  syncDbChips();
+  applyScrapeTarget(c.scrape_target || 'kavitacustom');
+  $('stBackup').checked = c.scrape_backup === true;
+  /* 「不写 Number」「番外卷号占 0」：applyScrapeTarget 已按档位给了默认值，存过的话以配置为准 */
+  if (c.scrape_skip_number !== undefined && SC.target !== 'komga')
+    $('stSkipNum').checked = !!c.scrape_skip_number;
+  if (c.scrape_sp_vol_zero !== undefined && SC.target !== 'komga')
+    $('stSpVolZero').checked = !!c.scrape_sp_vol_zero;
   $('stCover').checked = c.scrape_cover !== false;
   $('stCoverOver').checked = !!c.scrape_cover_overwrite;
+  $('stCollections').checked = c.scrape_collections !== false;
   $('stThreads').value = c.scrape_threads || 3;
   $('stCoverPick').value = c.scrape_cover_pick || 'auto';
   $('stCoverW').value = String(c.scrape_cover_width == null ? 800 : c.scrape_cover_width);
   $('stFill').checked = c.scrape_fill_missing !== false;
-  $('stSpecialNum').checked = !!c.scrape_special_number;
-  $('stKeepRaw').checked = c.scrape_keep_raw !== false;
-  $('stRenTpl').value = c.rename_template || '{series}/{id}';
+  $('stRenTpl').value = c.rename_template || '{series}/{prefix}{id}';
   setScrapeHint();
 
   /* 扫描目录单独存一份；第一次用就借转换页的源目录，省得再填一遍 */
@@ -918,12 +1019,12 @@ async function doPreview(){
   const rows = j.rows || [];
   $('prevCount').textContent = '　共 ' + rows.length + ' 个';
   if (!rows.length){ $('prevBox').innerHTML = '<div class="empty">没有找到文件</div>'; return; }
-  const DL = {rtl:'右开本', ltr:'左开本', ttb:'上到下'};
-  let h = '<table class="prev"><thead><tr><th>系列目录</th><th>文件名</th><th>方向</th><th>页</th></tr></thead><tbody>';
+  /* 方向列已经取消（判定挪到刮削页），这里只留卷号与页数 */
+  let h = '<table class="prev"><thead><tr><th>系列目录</th><th>文件名</th><th>卷</th><th>页</th></tr></thead><tbody>';
   rows.slice(0, 600).forEach(x => {
     h += '<tr><td>' + esc(x.folder) + (x.special ? ' <span class="pill">番外</span>' : '') + '</td>'
        + '<td>' + esc(x.file) + '</td>'
-       + '<td class="dir">' + (DL[x.dir] || '—') + (x.country ? ' ' + esc(x.country) : '') + '</td>'
+       + '<td class="n">' + (x.vol || '—') + '</td>'
        + '<td class="n">' + x.pages + '</td></tr>';
   });
   h += '</tbody></table>';
@@ -971,25 +1072,75 @@ async function poll(){
 /* ================================================================
    刮削页
    ================================================================ */
-const SC = {target:'both'};
+const SC = {target:'kavitacustom'};
 let SERIES = [], SEL = -1, FILE = -1, CANDS = [], META = null, CUR = null,
-    APPLIED = {}, SC_LASTLOG = -1, BATCHING = false, ETAB = 'form';
+    APPLIED = {}, SC_LASTLOG = -1, BATCHING = false, ETAB = 'form',
+    LAST_TERM = '',        /* 上一次真正搜出去的那个词：切系列时用它判断结果还作不作数 */
+    MULTI = new Set(),     /* 多选中的系列目录：Ctrl 点选 / Shift 选段 / 全选 */
+    SCOPE = 'series';      /* 右栏表单看的是「系列信息」还是「单册」 */
+    ANCHOR = -1;           /* Shift 选段的锚点 */
 /* 每本刮削前的原始号，用来做「对比」时区分「真改动」和「这本本来就是这个号」 */
 let FILES0 = {};
 
-/* 表单里「系列级」的字段；卷/话/标题单独走，因为它们可以按分册覆盖 */
-const SHARED = ['series','seriesSort','localizedSeries','count','seriesGroup','imprint','publisher',
-  'year','writer','penciller','translator','genre','tags','web','summary','notes'];
+/* 单册页的输入框现在显示的是哪一本（'' = 没显示具体某一本）。
+   readForm 只允许把值写回这一本 —— 否则「整组」状态下被清空的输入框，
+   会在下一次任意输入时把这个系列某一本的号抹掉（对比里冒出「话 4 → 清空」就是这个）。 */
+let SHOWN_FILE = '';
 
-/* 每本书自己的字段：分册模式下改这些只作用于当前这一本 */
-const FILE_FIELDS = ['volume','number','title','format','gtin'];
+/* 每本「被改过、但还没写进盘」的字段。
+   写入完会自动重扫，s.files 是按盘上重建的 —— 不把改动作收着，
+   先改好的那几册就白改了。典型流程：逐册改 → 应用本册 → 再改下一册 → 应用全部。
+   只记「和盘上原值不一样」的字段，避免把刚刮到的 ISBN / 链接又盖回旧值。 */
+let EDITS = {};   // dir → { path: {field: value} }
+
+const FILE_KEYS = ['volume', 'number', 'title', 'format', 'gtin', 'web', 'summary'];
+
+function rememberEdit(f){
+  const s = SERIES[SEL];
+  if (!s || !f) return;
+  const base = FILES0[f.path] || {};
+  const box = EDITS[s.dir] || (EDITS[s.dir] = {});
+  const cur = box[f.path] || {};
+  FILE_KEYS.forEach(function(k){
+    const v = f[k] || '';
+    if (v === (base[k] || '')) delete cur[k];   // 改回原样就不算改动
+    else cur[k] = v;
+  });
+  if (Object.keys(cur).length) box[f.path] = cur;
+  else delete box[f.path];
+}
+
+/* 重扫之后把还没落盘的改动盖回去（FILES0 已经在盖之前拍过快照，
+   「对比」的基线仍然是盘上的原值） */
+function overlayEdits(s){
+  const stash = s && EDITS[s.dir];
+  if (!stash) return;
+  s.files.forEach(function(f){
+    const e = stash[f.path];
+    if (!e) return;
+    Object.keys(e).forEach(function(k){ f[k] = e[k]; });
+  });
+}
+
+/* 表单里「系列级」的字段；卷/话/标题单独走，因为它们可以按分册覆盖 */
+const SHARED = ['series','seriesChinese','seriesOriginal','seriesEnglish','seriesSort','count',
+  'seriesGroup','imprint','publisher',
+  'storyArc','storyArcNumber','alternateSeries','alternateNumber',
+  'aniListId','malId','mangaBakaId','hardcoverId','comicVineId','metronId','comicBookRoundupId',
+  'year','writer','penciller','translator','genre','tags','web','summary','notes'];
 
 /* 番外关键词：文件名、标题里出现就当番外（和 Core.SplitStem 的正则保持一致） */
 const SPECIAL_RE = /番外|外傳|外传|特別篇|特别篇|短篇|特典|增刊|讀切|读切/;
 const isSpecialFile = f => /special/i.test((f && f.format) || '');
 const FIELD_LABELS = [
-  ['series','系列名'], ['localizedSeries','原名'], ['seriesSort','排序名'], ['count','总卷数'],
-  ['seriesGroup','合集'], ['imprint','品牌/书系'], ['publisher','出版社'],
+  ['series','系列名'], ['seriesChinese','中文名'], ['seriesOriginal','原名'],
+  ['seriesEnglish','英文名'], ['seriesSort','排序名'], ['count','总卷数'],
+  ['seriesGroup','合集/书单'], ['imprint','品牌/书系'], ['publisher','出版社'],
+  ['storyArc','故事线'], ['storyArcNumber','故事线序号'],
+  ['alternateSeries','别名系列'], ['alternateNumber','别名序号'],
+  ['aniListId','AniList'], ['malId','MAL'], ['mangaBakaId','MangaBaka'],
+  ['hardcoverId','Hardcover'], ['comicVineId','ComicVine'], ['metronId','Metron'],
+  ['comicBookRoundupId','Comic Book Roundup'],
   ['volume','卷'], ['number','话'], ['title','单册标题'], ['format','特殊类型'], ['year','年份'],
   ['language','语言'], ['writer','作者'], ['penciller','画师'], ['translator','译者'],
   ['genre','类型'], ['tags','标签'], ['manga','阅读方向'], ['ageRating','分级'],
@@ -1042,38 +1193,164 @@ function curSources(){
 }
 
 function applyScrapeTarget(t){
+  /* 旧配置里存的是「双兼容」(both)：该档位已移除，平滑落到 Kavita Custom
+     （Custom 版的 ComicInfo 写法与 Kavita 档一致，只是 series.json 换了格式） */
+  if (t === 'both') t = 'kavitacustom';
   SC.target = t;
   const e = document.querySelector('input[name=starget][value="' + t + '"]');
   if (e) e.checked = true;
+  /* 切档位时重置两个写号开关的默认值：不写 Number —— Kavita 系开、Komga 关；
+     番外卷号占 0 —— 只有 Kavita Custom 默认开，原版档保持卷号清空的老行为；
+     之后仍可手动改，改过的值由 loadCfg 从配置里恢复 */
+  const sw = $('stSkipNum');
+  if (sw){
+    if (t === 'komga'){ sw.checked = false; sw.disabled = true; }
+    else { sw.disabled = false; sw.checked = true; }
+  }
+  const swz = $('stSpVolZero');
+  if (swz){
+    if (t === 'komga'){ swz.checked = false; swz.disabled = true; }
+    else { swz.disabled = false; swz.checked = (t === 'kavitacustom'); }
+  }
   setScrapeHint();
+  syncPerFileFields();   // 单册面板的「话」输入框要跟着开关状态走
+}
+
+/* 数据库卡片的高亮跟着勾选走（用 class 而不是 :has，老 WebView2 也认） */
+function syncDbChips(){
+  document.querySelectorAll('#srcPick .db').forEach(function(l){
+    const i = l.querySelector('input');
+    l.classList.toggle('on', !!(i && i.checked));
+  });
 }
 
 function setScrapeHint(){
-  const h = $('stgHint');
-  if (SC.target === 'kavita')
-    h.textContent = '按 Volume 归类、番外标 Special；「(3)」拆卷号。'
-      + '已有 Komga 元数据的，读回现有再写入即互转。';
-  else if (SC.target === 'komga')
-    h.textContent = '按 Number 排序、番外标 Special；series.json 带系列简介。'
-      + '已有 Kavita 元数据的，读回后写入即互转。';
-  else
-    h.textContent = 'Volume 与 Number 都写、番外两种标记都带，换服务器不用重刮。';
+  const h = $('stgHint'), p = $('presetHint');
+  if (SC.target === 'kavitacustom'){
+    h.textContent = 'Kavita Custom 按 Volume 归类，番外靠 Format=Special 识别；链接逗号、空格都认，外部 id 直接进「外部元数据」。';
+    if (p) p.textContent = '预设：系列名末尾的「(3)」拆成卷号；正传只写卷、话只写话（不写 Number 默认开）；'
+      + '番外 Volume 占 0、Number 保序落 Specials；series.json 写 Custom 侧车全量字段。';
+  } else if (SC.target === 'kavita'){
+    h.textContent = 'Kavita（原版）按 Volume 归类，番外靠 Format=Special 识别；多个链接写逗号分隔（原版只按逗号认外部 id）。';
+    if (p) p.textContent = '预设：系列名末尾的「(3)」拆成卷号；正传只写卷、话只写话（不写 Number 默认开）；'
+      + '番外 Volume 占 0、Number 保序落 Specials；series.json 写 Mylar 格式（原版不读，留着无害）。';
+  } else {
+    h.textContent = 'Komga 按 Number 排序，番外写 x.5 才能插在正传之间；多个链接写空格分隔（它只按空格拆）。';
+    if (p) p.textContent = '预设：不拆系列名里的括号数字（Number 说了算）；番外写成 0.5 / 1.5 这类小数号；series.json 写 Mylar 格式。';
+  }
 }
 
 /* ---------- 扫描与系列列表 ---------- */
-async function doScan(){
+/* 一个小包装：POST 一个 JSON 拿回 JSON，省得每处都写三层 await */
+async function api(path, body){
+  return await (await fetch(path, {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body || {})})).json();
+}
+
+/* 系列多选：点选一个 / Ctrl 加减 / Shift 选一段 / 全选 */
+function updateAutoCount(){
+  const n = SEL >= 0 ? [...MULTI].filter(d => SERIES.some(s => s.dir === d)).length : 0;
+  const a = $('autoCount'), b = $('btnSelAll');
+  if (a) a.textContent = n > 1 ? '（' + n + ' 个）' : '';
+  if (b) b.textContent = (n && n === SERIES.length) ? '取消全选' : '全选';
+}
+
+function seriesClick(ev, i){
+  const s = SERIES[i];
+  if (!s) return;
+
+  if (ev.shiftKey && ANCHOR >= 0){
+    MULTI.clear();
+    const a = Math.min(ANCHOR, i), b = Math.max(ANCHOR, i);
+    for (let k = a; k <= b; k++) MULTI.add(SERIES[k].dir);
+    selectSeries(i, true);
+  } else if (ev.ctrlKey || ev.metaKey){
+    if (MULTI.has(s.dir)) MULTI.delete(s.dir);
+    if (!MULTI.size) MULTI.add(s.dir);      // 至少留一个，免得一个都没选
+    ANCHOR = i;
+    selectSeries(i, true);
+  } else {
+    ANCHOR = i;
+    selectSeries(i, false);
+  }
+  updateAutoCount();
+}
+
+function selectAllSeries(){
+  const n = [...MULTI].filter(d => SERIES.some(s => s.dir === d)).length;
+  if (n && n === SERIES.length){
+    MULTI.clear();
+    if (SERIES[SEL]) MULTI.add(SERIES[SEL].dir);
+  } else {
+    MULTI = new Set(SERIES.map(s => s.dir));
+  }
+  renderSeries();
+  updateAutoCount();
+  toast(MULTI.size > 1 ? '已选 ' + MULTI.size + ' 个系列' : '已取消全选');
+}
+
+/* quiet=true 时不显示「扫描中…」，用于写入/改名后自动同步
+   keepApplied=true 时保留「已匹配」标记（写入完只是元数据变了，匹配结果还在） */
+async function doScan(quiet, keepApplied){
   const src = scanSources();
   if (!src.length){ toast('请先添加扫描目录'); return; }
-  $('seriesList').innerHTML = '<div class="empty">扫描中…</div>';
+
+  /* 重扫要保持「我正看着哪个系列」：以前一律跳到第 0 个，
+     加了新的一本再扫描，界面先跳到别的系列上，看起来就像「没扫出来」。
+     正在改的那一册也一起记住 —— 应用本册之后会重扫，站回原来那一册才好接着改下一册。 */
+  const keepDir = SERIES[SEL] ? SERIES[SEL].dir : '';
+  const keepFile = (SEL >= 0 && FILE >= 0 && SERIES[SEL] && SERIES[SEL].files[FILE])
+      ? SERIES[SEL].files[FILE].path : '';
+  const before = {};
+  SERIES.forEach(s => before[s.dir] = s.files.length);
+
+  if (!quiet) $('seriesList').innerHTML = '<div class="empty">扫描中…</div>';
   const j = await (await fetch('/api/scrape/scan', {method:'POST',
     headers:{'Content-Type':'application/json'}, body: JSON.stringify({sources: src})})).json();
   if (j.err){ $('seriesList').innerHTML = '<div class="empty">出错：' + esc(j.err) + '</div>'; return; }
+
+  const prevApplied = APPLIED;
   SERIES = j.series || [];
   APPLIED = {};
-  SEL = -1; FILE = -1; CANDS = [];
-  $('seriesHint').textContent = SERIES.length + ' 个系列';
+  if (keepApplied) SERIES.forEach(s => { if (prevApplied[s.dir]) APPLIED[s.dir] = prevApplied[s.dir]; });
+  FILE = -1;
+  if (!quiet){
+    CANDS = [];
+    $('candCount').textContent = '';
+    $('candList').innerHTML = '<div class="empty">选中系列后搜索</div>';
+  }
+
+  /* 这次扫到几本、比上次多了几本，直接写在列表头上，别再靠猜 */
+  let added = 0, gone = 0;
+  SERIES.forEach(s => {
+    const n0 = before[s.dir];
+    if (n0 == null) return;
+    if (s.files.length > n0) added += s.files.length - n0;
+    else if (s.files.length < n0) gone += n0 - s.files.length;
+  });
+  const delta = (added || gone) ? '（新增 ' + added + ' 本' + (gone ? '，减少 ' + gone + ' 本' : '') + '）' : '';
+  if (!quiet || added || gone)
+    $('seriesHint').textContent = SERIES.length + ' 个系列 · ' + (j.files || 0) + ' 本' + delta;
+
   renderSeries();
-  if (SERIES.length) selectSeries(0);
+  const idx = SERIES.findIndex(s => s.dir === keepDir);
+  SEL = -1;
+  if (SERIES.length) selectSeries(idx >= 0 ? idx : 0);
+  else renderSeries();
+
+  /* 站回刚才那一册（按路径找，列表顺序变了也不会认错） */
+  if (keepFile && SEL >= 0){
+    const back = SERIES[SEL].files.findIndex(f => f.path === keepFile);
+    if (back >= 0){
+      FILE = back;
+      fillForm(META);
+      renderChips();
+      if (ETAB === 'diff') renderDiff();
+    }
+  }
+
+  if (added || gone) toast('扫描完成：' + SERIES.length + ' 个系列' + delta, 2600);
 }
 
 function renderSeries(){
@@ -1087,26 +1364,35 @@ function renderSeries(){
   SERIES.forEach((s, i) => {
     const done = APPLIED[s.dir] ? '<span class="pill ok">已匹配</span>'
                : (s.hasMeta ? '<span class="pill">有元数据</span>' : '');
-    const alt = s.existing && s.existing.localizedSeries && s.existing.localizedSeries !== s.name
-      ? '<div class="n2">' + esc(s.existing.localizedSeries) + '</div>' : '';
-    h += '<div class="srow' + (i === SEL ? ' on' : '') + '" onclick="selectSeries(' + i + ')">'
+    const sub = s.existing ? (s.existing.seriesOriginal || s.existing.localizedSeries) : '';
+    const alt = sub && sub !== s.name ? '<div class="n2">' + esc(sub) + '</div>' : '';
+    h += '<div class="srow' + (i === SEL ? ' on' : '') + (MULTI.has(s.dir) ? ' sel' : '')
+       + '" onclick="seriesClick(event,' + i + ')">'
        + '<div class="nm"><div class="n1">' + esc(s.name) + '</div>' + alt + '</div>'
        + done + '<span class="ct">' + s.files.length + ' 本</span></div>';
   });
   $('seriesList').innerHTML = h;
+  updateAutoCount();
 }
 
-function selectSeries(i){
+function selectSeries(i, keepMulti){
   if (i < 0 || i >= SERIES.length) return;
   SEL = i;
+  const dir = SERIES[i].dir;
+  if (!keepMulti){ MULTI = new Set([dir]); ANCHOR = i; }
+  else if (!MULTI.has(dir)) MULTI.add(dir);
   FILE = -1;
+  if (typeof scopeTab === 'function') scopeTab('series');   // 换系列回到系列页
   const s = SERIES[i];
 
   FILES0 = {};
   s.files.forEach(f => {
     FILES0[f.path] = {volume: f.volume || '', number: f.number || '', title: f.title || '',
-                      format: f.format || '', gtin: f.gtin || ''};
+                      format: f.format || '', gtin: f.gtin || '',
+                      web: f.web || '', summary: f.summary || ''};
   });
+  /* 快照拍完再盖用户的改动作（对比的基线仍然是盘上的原值） */
+  overlayEdits(s);
 
   CUR = blankMeta();
   if (s.hasMeta && s.existing) mergeMeta(CUR, s.existing);
@@ -1118,14 +1404,26 @@ function selectSeries(i){
   mergeMeta(META, CUR);
   if (APPLIED[s.dir]) mergeMeta(META, APPLIED[s.dir]);
   if (!META.series) META.series = s.name;
-  if (!META.volume && s.files[0]) META.volume = s.files[0].volume;
-  if (!META.number && s.files[0]) META.number = s.files[0].number;
+  /* 只有一本时，系列级就是那一本；多本系列不往系列级塞号 ——
+     塞了会让「对比」列出实际不会写入的差异，也容易在写入时兜底成第一本的号。 */
+  if (s.files.length === 1 && s.files[0]){
+    if (!META.volume) META.volume = s.files[0].volume;
+    if (!META.number) META.number = s.files[0].number;
+  }
 
   renderSeries();
-  $('editTitle').textContent = '　' + s.name;
+  /* 标题行带上路径：同名文件夹（双版本、正传+番外）光看名字分不出是哪一本 */
+  $('editTitle').innerHTML = esc(s.name)
+    + '<span class="epath" title="' + esc(s.dir) + '">' + esc(s.dir) + '</span>';
   $('term').value = cleanTerm(s.name);
-  CANDS = [];
-  $('candList').innerHTML = '<div class="empty">点「搜索」查这个系列</div>';
+
+  /* 搜索结果只跟「搜索词」走，不该因为点了一下系列就清空：
+     以前切系列必清，点回自己那一行也会把刚搜出来的一列结果丢掉。
+     搜索词没变就原样留着。 */
+  if (CANDS.length && $('term').value.trim() !== LAST_TERM) CANDS = [];
+  if (CANDS.length) renderCands();
+  else { $('candCount').textContent = ''; $('candList').innerHTML = '<div class="empty">点「搜索」查这个系列</div>'; }
+
   fillForm(META);
   renderChips();
   updateEditSrc();
@@ -1141,11 +1439,13 @@ function cleanTerm(name){
 
 function blankMeta(){
   const m = {};
-  ['series','seriesSort','localizedSeries','volume','number','count','title','summary','year',
+  ['series','seriesSort','localizedSeries','seriesChinese','seriesOriginal','seriesEnglish',
+   'volume','number','count','title','summary','year',
    'month','day','publisher','imprint','writer','penciller','inker','colorist','letterer',
    'coverArtist','editor','translator','genre','tags','characters','teams','locations','web',
    'language','ageRating','format','manga','gtin','scanInformation','notes','seriesGroup',
    'storyArc','storyArcNumber','alternateSeries','alternateNumber','coverUrl','coverUrlZh',
+   'aniListId','malId','mangaBakaId','hardcoverId','comicVineId','metronId','comicBookRoundupId',
    'coverUrlOriginal','sourceName','sourceId','sourceUrl'].forEach(k => m[k] = '');
   return m;
 }
@@ -1184,34 +1484,72 @@ function currentScope(){
   return null;
 }
 
+/* 表单实际在编辑的那一本：
+   选了具体某册 → 就是它；只有一本的系列 → 整组就是它（否则连号都改不了）；
+   多本系列停在「整组」 → null（单册字段整组没有意义，锁住）。 */
+function activeFile(){
+  const s = SERIES[SEL];
+  if (!s) return null;
+  if (FILE >= 0 && s.files[FILE]) return s.files[FILE];
+  if (s.files.length === 1) return s.files[0];
+  return null;
+}
+
+/* 右栏两个框：系列信息（整组共用）/ 单册（每本自己的） */
+function scopeTab(which){
+  if (which === 'diff'){ editTab('diff'); return; }
+  SCOPE = which === 'file' ? 'file' : 'series';
+  $('paneSeries').style.display = SCOPE === 'series' ? '' : 'none';
+  $('paneFile').style.display = SCOPE === 'file' ? '' : 'none';
+  editTab('form');
+}
+
 function renderChips(){
   const s = SERIES[SEL];
   if (!s){ $('fileChips').innerHTML = ''; $('fileHint').textContent = ''; return; }
 
-  let h = '<span class="chip' + (FILE < 0 ? ' on' : '') + '" onclick="selectFile(-1)">整组</span>';
+  let h = '<span class="chip' + (FILE < 0 ? ' on' : '') + '" onclick="selectFile(-1)">整册</span>';
   s.files.forEach((f, i) => {
     // 册号由后端统一发（正传 V01、番外 SP01），chips 和重命名用的是同一个号，
-    // 不然界面显示 v1、文件却叫 V01，对不上
-    const tag = f.label || (isSpecialFile(f)
-      ? 'SP' + (f.volume || '')
-      : (f.volume ? 'V' + f.volume : (f.number ? 'V' + f.number : 'V' + (i + 1))));
+    // 不然界面显示 v1、文件却叫 V01，对不上。
+    // 号和卷都空着（用户特意删掉的）时不摆一个假的 V01 —— 改成 #序号，一眼能看出「这本没号」。
+    const hasNum = !!(f.volume || f.number);
+    const tag = !hasNum ? '#' + (i + 1)
+      : (f.label || (isSpecialFile(f)
+        ? 'SP' + (f.volume || '')
+        : (f.volume ? 'V' + f.volume : 'V' + f.number)));
     h += '<span class="chip' + (FILE === i ? ' on' : '') + '" title="' + esc(f.name) + '"'
        + ' onclick="selectFile(' + i + ')">' + esc(tag) + '</span>';
   });
   $('fileChips').innerHTML = h;
 
-  const f = currentScope();
+  const fc = $('fileCount');
+  if (fc) fc.textContent = '（' + s.files.length + '）';
+
+  const picked = currentScope();
+  const f = activeFile();
   const multi = s.files.length > 1;
-  $('fileHint').textContent = f
-    ? '正在改这一本：' + f.name + '　（卷 / 话 / 标题 / ISBN 只作用于它）'
-    : (multi
-        ? '整组模式：卷 / 话 / 标题 / 特殊类型属于每本（已锁住），要改请点上面的号；ISBN 填了会写到每一本。'
-        : '整组模式：这个系列只有一本，卷 / 话 / 标题 / ISBN 直接写它就行。');
+  const withIsbn = s.files.filter(x => x.gtin).length;
+  const isbnTip = withIsbn ? '　已按卷附 ISBN：' + withIsbn + ' 本' : '';
+
+  if (picked){
+    const bits = [];
+    if (picked.gtin) bits.push('ISBN ' + picked.gtin);
+    if (picked.web) bits.push('有单册链接');
+    if (picked.format) bits.push(picked.format === 'Special' ? '番外' : picked.format);
+    $('fileHint').textContent = '正在改这一本：' + picked.name
+      + (bits.length ? '　' + bits.join('　') : '');
+  } else if (multi){
+    $('fileHint').textContent = '还没选具体哪一册：下面这些字段每册不同（已锁住），点上面的号选一册再改。' + isbnTip;
+  } else {
+    $('fileHint').textContent = '这个系列只有一本，直接改。' + isbnTip;
+  }
 }
 
 function selectFile(i){
   readForm();          // 先把当前输入收进模型，切过去别丢
   FILE = i;
+  if (i >= 0) scopeTab('file');    // 点号就是来看这一册的，直接翻到单册页
   fillForm(META);
   renderChips();
   if (ETAB === 'diff') renderDiff();
@@ -1231,19 +1569,25 @@ function setSelect(id, v){
 }
 
 function fillForm(m){
+  /* 系列页：整组共用，系列级字段全在这儿 */
   SHARED.forEach(k => { const e = $('f_' + k); if (e) e.value = m[k] || ''; });
-  const f = currentScope();
-  $('f_volume').value = f ? (f.volume || '') : (m.volume || '');
-  $('f_number').value = f ? (f.number || '') : (m.number || '');
-  $('f_title').value  = f ? (f.title || '')  : (m.title || '');
-  setSelect('f_format', f ? (f.format || '') : m.format);
   setSelect('f_language', m.language);
   setSelect('f_manga', m.manga);
   setSelect('f_ageRating', m.ageRating);
-  const onlyOne = !!(SERIES[SEL] && SERIES[SEL].files.length === 1);
-  $('f_gtin').value = f ? (f.gtin || (onlyOne ? (m.gtin || '') : '')) : (m.gtin || '');
+
+  /* 单册页：只有「这一本」的值。多本系列停在整组时全部清空 ——
+     显示第一本的号会让人以为改一下就能套给全组。 */
+  const f = activeFile();
+  $('f_volume').value = f ? (f.volume || '') : '';
+  $('f_number').value = f ? (f.number || '') : '';
+  $('f_title').value  = f ? (f.title || '')  : '';
+  setSelect('f_format', f ? (f.format || '') : '');
+  $('f_gtin').value = f ? (f.gtin || '') : '';
+  $('f_fweb').value = f ? (f.web || '') : '';
+  $('f_fsummary').value = f ? (f.summary || '') : '';
+  SHOWN_FILE = f ? f.path : '';    /* 记下这一屏属于哪一本，readForm 只认它 */
+
   syncPerFileFields();
-  setTimeout(updateFormMore, 0);
 }
 
 /*
@@ -1252,77 +1596,80 @@ function fillForm(m){
   整组时置灰并说明原因，选了具体某本才可编辑。
 */
 function syncPerFileFields(){
-  const f = currentScope();
+  const f = activeFile();
   const s = SERIES[SEL];
   const multi = !!(s && s.files.length > 1);
+  /* 多本系列停在「整组」时，单册字段一律锁死：这些字段每本不同，
+     让它们可编辑就等着「写入整组」把 18 卷写成同一个书名 / 同一个书号。 */
+  const lock = multi && !f;
+  /* 「不写 Number」开着（Kavita 系档位）：正传只写卷，话号不落盘 ——
+     输入框置灰标注，值留在模型里不动（开关关掉或换档位后原值还在）。
+     番外相反：卷号占 0，话号要照写排序。 */
+  const skip = SC.target !== 'komga' && $('stSkipNum').checked && !!f;
+  const spz = SC.target !== 'komga' && $('stSpVolZero').checked && !!f;
+  const special = !!(f && f.format === 'Special');
 
-  /* 卷 / 话 / 单册标题 / 特殊类型：每本各自的事实。
-     整组模式下锁住 —— 写着「整组共用」的号，一点「写入整组」就会被套到每一本上，
-     正传和番外混放的系列立刻全乱。单本系列不锁：它只有一本，整组就是那一本。 */
-  ['f_volume', 'f_number', 'f_title', 'f_format'].forEach(function(id){
-    const e = $(id);
-    if (!e) return;
-    const lock = !f && multi;
-    e.disabled = lock;
-    const box = e.closest('.fld');
-    if (box) box.classList.toggle('muted', lock);
-    e.title = lock ? '整组不写单册字段：先在「分册与号」里选一个 V01 / SP01' : '';
-  });
+  ['f_volume', 'f_number', 'f_title', 'f_format', 'f_gtin', 'f_fweb', 'f_fsummary']
+    .forEach(function(id){
+      const e = $(id);
+      if (!e) return;
+      e.disabled = lock;
+      const box = e.closest('.fld');
+      if (box) box.classList.toggle('muted', lock);
+      e.title = lock ? '这些字段每册不同：先在上面选一个号（V01 / SP01）' : '';
+    });
 
-  /* ISBN（GTIN）是每本一条，但整组时允许填一个「整组默认值」：
-     单卷本、或者你只有一条 ISBN 时，不至于因为进不了单册就没法填。 */
-  const g = $('f_gtin');
-  if (g){
-    g.disabled = false;
-    const box = g.closest('.fld');
-    if (box) box.classList.remove('muted');
-    g.title = multi && !f ? '填了就写到这一组每一本（每本不同请选单册分别填）' : '';
+  const num = $('f_number');
+  if (num && !lock && skip && !special){
+    num.disabled = true;
+    const box = num.closest('.fld');
+    if (box) box.classList.add('muted');
+    num.title = '「不写 Number」开着：正传只写卷，这一格的值不会落盘（生成预览可核对）';
+  }
+  const vol = $('f_volume');
+  if (vol && !lock && special && SC.target !== 'komga'){
+    vol.title = spz ? '番外：卷号落 0（进 Specials 区），话号按原顺序保留'
+                    : '番外：卷号清空（「番外卷号占 0」没开），话号按原顺序保留';
   }
 
   syncWriteButtons();
 }
 
-/* 两个写入按钮互斥：选单册只能「仅写入本组」，选整组只能「写入整组」 */
+/* 两个写入按钮：
+   「仅应用本册」要选到具体某一册（单本系列那一本天然就是它）；
+   「应用全部」只要选了系列就能用 —— 各册改过的号 / 标题 / 书号 / 链接都会一起写下去。 */
 function syncWriteButtons(){
   const s = SERIES[SEL];
-  const one = !!currentScope();
   const b1 = $('btnApplyOne'), b2 = $('btnWriteGroup');
-  if (b1) b1.disabled = !s || !one;
-  if (b2) b2.disabled = !s || one;
+  if (b1) b1.disabled = !(s && activeFile());
+  if (b2) b2.disabled = !s;
 }
 
-/* 表单比可视区高时提示一句：不然下面那半截字段永远像「丢了」 */
-function updateFormMore(){
-  const f = $('form'), h = $('formMore');
-  if (!f || !h) return;
-  h.style.display = (f.scrollHeight > f.clientHeight + 4) ? '' : 'none';
-}
-
-window.addEventListener('resize', () => setTimeout(updateFormMore, 60));
 
 function readForm(){
   const m = META || (META = blankMeta());
   SHARED.forEach(k => { const e = $('f_' + k); if (e) m[k] = e.value.trim(); });
+  /* Kavita 的本地化名不是独立输入框：显示名不是中文时自动等于中文名，否则留空 */
+  m.localizedSeries = (m.seriesChinese && m.seriesChinese !== m.series) ? m.seriesChinese : '';
   m.language = $('f_language').value;
   m.manga = $('f_manga').value;
   m.ageRating = $('f_ageRating').value;
 
-  const f = currentScope();
-  const fmt = $('f_format').value;
-  const gtin = $('f_gtin').value.trim();
-  if (f){
-    // 分册模式：号、标题、特殊类型、ISBN 都写这一本，不污染整组
+  /* 单册页只往「这一本」上写：多本系列停在整组时这些输入是禁用的，
+     就算读到也全是空串，绝不能落进系列级 —— 否则「写入整组」会把
+     同一个号 / 同一个书号套给每一本。
+     再加一道：这一屏显示的必须就是它（SHOWN_FILE），不然说明输入框里的值
+     属于别的册（甚至已经被清空），照着写会把一本的号抹掉。 */
+  const f = activeFile();
+  if (f && f.path === SHOWN_FILE){
     f.volume = $('f_volume').value.trim();
     f.number = $('f_number').value.trim();
     f.title  = $('f_title').value.trim();
-    f.format = fmt;
-    f.gtin   = gtin;
-  } else {
-    m.volume = $('f_volume').value.trim();
-    m.number = $('f_number').value.trim();
-    m.title  = $('f_title').value.trim();
-    m.format = fmt;
-    m.gtin   = gtin;
+    f.format = $('f_format').value;
+    f.gtin   = $('f_gtin').value.trim();
+    f.web    = $('f_fweb').value.trim();
+    f.summary = $('f_fsummary').value.trim();
+    rememberEdit(f);      /* 重扫会按盘上重建 s.files，这里先记一份，别让改动作废 */
   }
   return m;
 }
@@ -1341,25 +1688,67 @@ function editTab(which){
   ETAB = which === 'diff' ? 'diff' : 'form';
   $('tabForm').classList.toggle('on', ETAB === 'form');
   $('tabDiff').classList.toggle('on', ETAB === 'diff');
+  $('tabSeries').classList.toggle('on', ETAB === 'form' && SCOPE === 'series');
+  $('tabFile').classList.toggle('on', ETAB === 'form' && SCOPE === 'file');
   $('form').style.display = ETAB === 'form' ? '' : 'none';
   $('diff').style.display = ETAB === 'diff' ? 'flex' : 'none';
   if (ETAB === 'diff'){ DIFF_EMPTY = false; readForm(); renderDiff(); }
 }
 
+/* 单册页要比的字段：全在「这一本」身上。web / summary 在这页上是单册链接与本册简介，
+   和系列页的「系列链接 / 系列简介」是两个东西。 */
+const FILE_DIFF = [
+  ['volume', '卷'], ['number', '话'], ['title', '单册标题'], ['format', '特殊类型'],
+  ['gtin', 'ISBN'], ['web', '单册链接'], ['summary', '本册简介']
+];
+/* 真正每本不同的号：系列页不列它们，列了就是「实际不会写入的差异」 */
+const FILE_ONLY = ['volume', 'number', 'title', 'format', 'gtin'];
+
+/* 只差行尾（\r\n / \n）或行尾空格的不算改动：XML 读回来本来就会把 CRLF 折成 LF，
+   不这么比，同一段简介每对比一次都会被判成「改过」——看着内容一模一样却红线一排。 */
+function sameVal(a, b){
+  const norm = v => String(v == null ? '' : v)
+    .replace(/\r\n?/g, '\n')
+    .split('\n').map(x => x.replace(/[ \t]+$/, '')).join('\n').trim();
+  return norm(a) === norm(b);
+}
+
 function renderDiff(){
   if (DIFF_EMPTY) return;
+  const s = SERIES[SEL];
   const f = currentScope();
+  const multi = !!(s && s.files.length > 1);
+  const perFile = SCOPE === 'file' && !!f;
+
+  /* 单册页还没选具体哪一本：单册字段每本都不一样，拿系列级的号去比，
+     只会凭空冒出一行「话 4 → 清空」。不猜，直接让人先选一册。 */
+  if (SCOPE === 'file' && multi && !f){
+    $('diffSum').textContent = '单册页还没选具体哪一本 —— 点上面的册号（V01 / SP01）再对比。';
+    $('diffBody').innerHTML = '<tr><td colspan="3" style="color:#8C8C8C">单册字段每本不同，整册没有可对比的值</td></tr>';
+    return;
+  }
+
   const base = CUR || blankMeta();
+  const saved = perFile ? (FILES0[f.path] || {}) : null;
   const rows = [];
   let changed = 0, added = 0, removed = 0;
 
   FIELD_LABELS.forEach(pair => {
-    const k = pair[0], label = pair[1];
-    const perFile = f && FILE_FIELDS.indexOf(k) >= 0;
-    let nw = META[k] || '';
-    if (perFile) nw = f[k] || '';
-    const old = (perFile && FILES0[f.path]) ? (FILES0[f.path][k] || '') : (base[k] || '');
-    if (String(old) === String(nw)) return;
+    const k = pair[0];
+    let label = pair[1], old, nw;
+    if (perFile){
+      /* 这一页只看这一本：系列级字段改没改，不在这页凑数 */
+      const hit = FILE_DIFF.filter(function(x){ return x[0] === k; })[0];
+      if (!hit) return;
+      label = hit[1];
+      nw = f[k] || '';
+      old = saved[k] || '';
+    } else {
+      if (FILE_ONLY.indexOf(k) >= 0) return;   // 系列页不列每本各不相同的号
+      nw = META[k] || '';
+      old = base[k] || '';
+    }
+    if (sameVal(old, nw)) return;
     if (!old) added++;
     else if (!nw) removed++;
     else changed++;
@@ -1389,6 +1778,8 @@ async function doSearch(){
   if (!term){ toast('先填搜索词'); return; }
   const src = curSources();
   if (!src.length){ toast('至少勾一个元数据来源'); return; }
+  LAST_TERM = term;
+  $('candCount').textContent = '';
   $('candList').innerHTML = '<div class="empty">查询中…</div>';
   const j = await (await fetch('/api/scrape/search', {method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -1396,23 +1787,42 @@ async function doSearch(){
   if (j.err){ $('candList').innerHTML = '<div class="empty">出错：' + esc(j.err) + '</div>'; return; }
   CANDS = j.candidates || [];
   renderCands();
+  /* 上次选的那一条已经高亮了：直接滚到它那儿；没有就回到顶部 */
+  const on = $('candList').querySelector('.cand.on');
+  if (on) on.scrollIntoView({block: 'nearest'});
+  else $('candList').scrollTop = 0;
+}
+
+/* 上一次选的是哪一条：来源 + id 都存在元数据里（sourceName/sourceId），
+   重新搜索时把它标出来 —— 已经是同一个作品就不用再挨条比对，也不会因为
+   「这次选了别的条目」而让备注字段莫名其妙变掉。 */
+function prevCandIndex(){
+  const id = String((META && META.sourceId) || '');
+  const name = String((META && META.sourceName) || '').toLowerCase();
+  if (!id) return -1;
+  return CANDS.findIndex(c => String(c.id) === id &&
+    (!name || String(c.source).toLowerCase() === name || String(c.sourceLabel).toLowerCase() === name));
 }
 
 function renderCands(){
+  const box = $('candList');
   if (!CANDS.length){
-    $('candList').innerHTML = '<div class="empty">没有结果：换个搜索词，或直接在右边手填</div>';
+    $('candCount').textContent = '';
+    box.innerHTML = '<div class="empty">没有结果：换个搜索词，或直接在右边手填</div>';
     return;
   }
+  $('candCount').textContent = '　' + CANDS.length + ' 条';
+  const hit = prevCandIndex();
   let h = '';
   CANDS.forEach((c, i) => {
-    h += '<div class="cand" onclick="pickCand(' + i + ')">'
+    h += '<div class="cand' + (i === hit ? ' on' : '') + '" onclick="pickCand(' + i + ')">'
        + (c.cover ? '<img class="cv" loading="lazy" src="' + esc(c.cover) + '" onerror="this.style.visibility=\'hidden\'">'
                   : '<div class="cv"></div>')
-       + '<div class="tx"><div class="t1">' + esc(c.title) + '</div>'
+       + '<div class="tx"><div class="t1">' + esc(c.title) + (i === hit ? ' <span class="pill ok">上次选的</span>' : '') + '</div>'
        + '<div class="t2"><span class="pill src">' + esc(c.sourceLabel) + '</span>'
        + esc(c.sub) + (c.titleAlt ? ' · ' + esc(c.titleAlt) : '') + '</div></div></div>';
   });
-  $('candList').innerHTML = h;
+  box.innerHTML = h;
 }
 
 async function pickCand(i){
@@ -1421,10 +1831,14 @@ async function pickCand(i){
   document.querySelectorAll('#candList .cand').forEach((e, k) => e.classList.toggle('on', k === i));
   toast('正在拉 ' + c.sourceLabel + ' 的详情…');
 
+  const s0 = SERIES[SEL];
+  /* 多本系列才去查每卷 ISBN：那是按「单行本」子条目逐本请求的，单本就别浪费这一次 */
+  const wantVols = !!(s0 && s0.files.length > 1 && c.source === 'bangumi');
+
   const j = await (await fetch('/api/scrape/fetch', {method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({source: c.source, id: c.id, term: $('term').value.trim(),
-      sources: curSources(), fillMissing: $('stFill').checked})})).json();
+      sources: curSources(), fillMissing: $('stFill').checked, volumes: wantVols})})).json();
   if (j.err){ toast(j.err, 3000); return; }
 
   const got = j.meta || {};
@@ -1445,16 +1859,28 @@ async function pickCand(i){
   if (s && s.files.length === 1){
     META.volume = s.files[0].volume || META.volume;
     META.number = s.files[0].number || META.number;
-  } else if (s && s.files[0]){
-    META.volume = s.files[0].volume || '';
-    META.number = s.files[0].number || '';
+  } else {
+    // 多本系列：号在每本身上，系列级留空（否则写入时可能兜底成第一本的号）
+    META.volume = '';
+    META.number = '';
   }
   inferMeta(META);
 
+  /* 每卷 ISBN：按卷号发到每一本身上（ISBN 是单本属性，系列级一条套给 18 卷会让查询全串味） */
+  const vi = applyVolumeIsbns(s, j.volumes);
+  const isbnHit = vi.n;
+  if (vi.single) META.gtin = vi.single;
+  /* 每卷的书号 / 单册链接是「还没落盘」的改动，重扫以后也要留着 */
+  if (s) s.files.forEach(function(f){ rememberEdit(f); });
+
+  /* 外部 id 不在这里查：那是「获取额外数据库 id」按钮的活儿，
+     而且它只补 id、不重写元数据 —— 混进写入流程会把刚拉到的值一起改掉 */
+
   fillForm(META);
+  renderChips();
   updateEditSrc();
   if (ETAB === 'diff') renderDiff();
-  toast('已填入：' + (META.series || c.title));
+  toast('已填入：' + (META.series || c.title) + (isbnHit ? '（附 ' + isbnHit + ' 条 ISBN）' : ''));
 }
 
 function loadExisting(){
@@ -1499,7 +1925,7 @@ async function restoreOriginal(){
   if (j.err){ toast(j.err, 3600); return; }
 
   confirmBar({
-    text: '从「' + j.file + '」里读回了刮削之前的原始元数据。要把它填回表单吗？（只改表单，确认后再点「仅写入本组 / 写入整组」）',
+    text: '从「' + j.file + '」里读回了刮削之前的原始元数据。要把它填回表单吗？（只改表单，确认后再点「仅应用本册 / 应用全部」）',
     ok: '填回表单',
     run: function(){
       // 系列级字段
@@ -1516,6 +1942,7 @@ async function restoreOriginal(){
         f.title = x.title || '';
         f.format = x.format || '';
         f.gtin = x.gtin || '';
+        rememberEdit(f);      /* 回退也是一次「还没落盘的改动」，重扫后别丢 */
         n++;
       });
       renderChips();
@@ -1533,7 +1960,7 @@ async function restoreOriginal(){
 async function doRename(preview){
   const s = SERIES[SEL];
   if (!s){ toast('先选一个系列'); return; }
-  const tpl = ($('stRenTpl').value || '').trim() || '{series}/{id}';
+  const tpl = ($('stRenTpl').value || '').trim() || '{series}/{prefix}{id}';
   const m = APPLIED[s.dir] || readForm();
 
   const job = {
@@ -1545,18 +1972,53 @@ async function doRename(preview){
   const j = await (await fetch('/api/scrape/rename' + (preview ? '/preview' : ''),
     {method:'POST', headers:{'Content-Type':'application/json'},
      body: JSON.stringify({template: tpl, jobs: [job]})})).json();
-  if (j.err){ toast(j.err, 3600); return; }
+  if (j.err){ toast(j.err, 4000); if (!preview) await doScan(true); return; }
 
   if (preview){
     subTab('pre');
-    $('scPre').textContent = '/* 按模板 ' + tpl + ' 重命名后的路径（相对库根 ' + s.dir.replace(/[\\\/][^\\\/]+$/, '') + '） */\n\n'
-      + j.rows.map(r => (r.same ? '（不变） ' : (r.exists ? '（同名冲突，会跳过） ' : ''))
-          + r.src + '\n    → ' + r.dst).join('\n\n');
+    const root = s.dir.replace(/[\\\/][^\\\/]+$/, '');
+    const rows = j.rows || [];
+    const dirs = rows.filter(r => r.kind === 'dir');
+    const files = rows.filter(r => r.kind !== 'dir');
+    const changed = files.filter(r => !r.same).length;
+    const clash = files.filter(r => r.exists && !r.same).length;
+
+    const rel = p => String(p || '').replace(root + '\\', '').replace(root + '/', '');
+    const base = p => String(p || '').split(/[\\\/]/).pop();
+
+    let h = '<div class="phead">模板 <b>' + esc(tpl) + '</b>　共 <b>' + files.length + '</b> 本'
+          + (changed ? '，要改 <b>' + changed + '</b> 本' : '，全部不用改')
+          + (clash ? '　<span class="pill" style="color:#B45309;border-color:#F0C48A;background:#FFF7ED">同名冲突 ' + clash + ' 本</span>' : '')
+          + '<br>第一段 = 现有文件夹改名，最后一段 = 文件名；原地进行，不搬目录。</div>';
+
+    dirs.forEach(r => {
+      h += '<div class="pdir">文件夹　<span class="mono">' + esc(base(r.src)) + '</span>'
+         + (r.same
+              ? '　<span class="pill">不改</span>'
+              : '<span class="arrow">→</span><span class="mono">' + esc(base(r.dst)) + '</span>'
+                + (r.exists ? '　<span class="pill" style="color:#B45309">已存在，会跳过</span>' : ''))
+         + (r.note ? '　<span style="color:#8C8C8C">' + esc(r.note) + '</span>' : '')
+         + '</div>';
+    });
+
+    h += '<table class="prev"><thead><tr><th>原文件</th><th>新文件名</th><th style="width:70px">状态</th></tr></thead><tbody>';
+    files.forEach(r => {
+      const st = r.same
+        ? '<span class="pill">不变</span>'
+        : (r.exists ? '<span class="pill" style="color:#B45309">冲突</span>'
+                    : '<span class="pill ok">改名</span>');
+      h += '<tr>'
+         + '<td class="mono" style="color:#6B6B6B">' + esc(rel(r.src)) + '</td>'
+         + '<td class="mono">' + esc(rel(r.dst)) + '</td>'
+         + '<td>' + st + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    showPreHtml(h);
     return;
   }
 
   toast('改名完成：改了 ' + j.moved + ' 个，未变 ' + j.skipped + '，失败 ' + j.failed, 3200);
-  await doScan();   // 路径变了，重新扫一遍
+  await doScan(true);   // 路径变了，重新扫一遍（保留当前选中）
 }
 
 /* ---------- 打开目录（Ctrl+E） ---------- */
@@ -1568,20 +2030,37 @@ function openSelected(){
 }
 
 /* ---------- 应用 / 写入 ---------- */
+/* 写多本时，系列级的卷 / 话 / 标题 / 特殊类型 / 书号都没有意义 —— 每本的值在各自文件里。
+   留着会兜底：扫描时系列级那份取自第一本（多半是番外，Format=Special、标题带「增刊+番外」），
+   只应用一册时就被套到被编辑的那一册上 —— 清空号后突然变 SP、还多了标题，就是这个。
+   判断要用「这个系列有几本」，不是「这一批发几本」。 */
 function buildJob(s, meta, onlyFile){
   const files = (onlyFile != null && onlyFile >= 0) ? [s.files[onlyFile]] : s.files;
   const m = Object.assign({}, meta);
+  const many = s.files.length > 1;
 
-  /* 写多本时，系列级的卷 / 话没有意义 —— 每本的号在各自文件里。
-     留着它会兜底：某一本没号时被套上「第一本的号」，正传和番外混放立刻错位。 */
-  if (files.length > 1){ m.volume = ''; m.number = ''; }
+  if (many){ m.volume = ''; m.number = ''; m.title = ''; m.format = ''; m.gtin = ''; }
 
   return {
     dir: s.dir, series: m.series || s.name,
     totalIssues: parseInt(m.count) || 0,
+    multi: many,
     meta: m,
-    files: files.map(f => ({path: f.path, volume: f.volume || '', number: f.number || '',
-                            title: f.title || '', format: f.format || '', gtin: f.gtin || ''}))
+    /* 单册链接 / 本册简介只在「真的和系列级不一样」时才发：扫描会把包内那份读回来，
+       原样回传等于把旧值钉死 —— 以后改系列简介，那些书也不会跟着变。 */
+    files: files.map(f => ({
+      path: f.path, volume: f.volume || '', number: f.number || '',
+      title: f.title || '', format: f.format || '', gtin: f.gtin || '',
+      web: (f.web && f.web !== m.web) ? f.web : '',
+      summary: (f.summary && f.summary !== m.summary) ? f.summary : '',
+      /* 这一本被用户亲手改过 卷/话/类型 → 后端关掉「程序替你改值」的规则。
+         只看这三个字段：自动刮削落的 ISBN / 链接也会进 EDITS，不能把整册
+         误判成手动编辑（否则番外照样不挂卷号的规则就失效了）。
+         没改过的册走刮削规则：番外照样不挂卷号、缺号照样互补。 */
+      manual: (function(ed){
+        return !!(ed && (ed.volume !== undefined || ed.number !== undefined || ed.format !== undefined));
+      })(EDITS[s.dir] && EDITS[s.dir][f.path])
+    }))
   };
 }
 
@@ -1594,25 +2073,39 @@ async function applySeries(andWrite){
   APPLIED[s.dir] = m;
   renderSeries();
   if (ETAB === 'diff') renderDiff();
-  toast(FILE >= 0 ? '已写入这一本：' + s.files[FILE].name : '已写入：' + m.series);
-  if (andWrite) await writeJobs([buildJob(s, m, FILE >= 0 ? FILE : null)]);
+
+  /* 单本系列没选号，那唯一一本就是「本册」 */
+  const idx = FILE >= 0 ? FILE : (s.files.length === 1 ? 0 : -1);
+  if (idx < 0){ toast('先在分册里选一册（V01 / SP01）'); return; }
+  const f0 = s.files[idx];
+  /* 报一下实际写下去的卷/话：「我以为清了」和「真的清了」差别就在这一句里 */
+  toast('已应用 ' + f0.name + '（卷 ' + (f0.volume || '空') + ' / 话 ' + (f0.number || '空') + '）', 2600);
+  if (andWrite) await writeJobs([buildJob(s, m, idx)]);
 }
 
-/* 写入整组：只写当前这一组的所有册。要跨系列批量，用菜单「写入全部已匹配」。 */
+/* 应用全部：把这一系列每一册自己的号 / 标题 / 书号 / 链接一起写下去。
+   各册单独改过的值都留在 s.files 里（切册时 readForm 已经收进去了），
+   所以停在某一册上也可以直接点这里 —— 不用先退回「整册」。 */
 async function writeGroup(){
   const s = SERIES[SEL];
   if (!s){ toast('先选一个系列'); return; }
-  if (FILE >= 0){ toast('现在是单册模式，用「仅写入本组」'); return; }
 
   const m = readForm();
   if (!m.series){ toast('系列名不能空'); return; }
   META = m;
   APPLIED[s.dir] = m;
 
+  /* 停在「整册」时单册字段是禁用的（显示为空），这时点应用写的是模型里已有的号，
+     不会因为「界面看着空」就把号清掉 —— 文案里把实际情况摆出来，别让人误会。 */
   const backup = $('stBackup').checked ? '（先备份 .bak）' : '（未开备份）';
+  const withNum = s.files.filter(f => f.volume || f.number).length;
+  const numTxt = withNum === s.files.length ? '每一册都带卷/话号'
+               : (withNum === 0 ? '全部都是空号' : withNum + ' 册带号、' + (s.files.length - withNum) + ' 册是空号');
+  const idle = (s.files.length > 1 && FILE < 0) ? '（现在停在「整册」，要逐册改号请先点一个册号）' : '';
   confirmBar({
-    text: '把当前表单写进「' + (m.series || s.name) + '」的 ' + s.files.length + ' 本' + backup + '。',
-    ok: '写入 ' + s.files.length + ' 本',
+    text: '把「' + (m.series || s.name) + '」的 ' + s.files.length + ' 册一起写进文件' + backup
+        + '。按现在表单：' + numTxt + '。' + idle,
+    ok: '应用 ' + s.files.length + ' 册',
     run: () => writeJobs([buildJob(s, m, null)])
   });
 }
@@ -1632,20 +2125,27 @@ async function writeJobs(jobs){
   const body = {
     jobs: jobs,
     target: SC.target,
-    splitSuffix: $('stSplit').checked,
     backup: $('stBackup').checked,
-    seriesJson: $('stSeriesJson').checked,
+    skipNumber: $('stSkipNum').checked,
+    spVolZero: $('stSpVolZero').checked,
     cover: $('stCover').checked,
     coverOverwrite: $('stCoverOver').checked,
+    collections: $('stCollections').checked,
     coverPick: $('stCoverPick').value,
     coverWidth: parseInt($('stCoverW').value) || 0,
-    specialNumber: $('stSpecialNum').checked,
-    keepRaw: $('stKeepRaw').checked,
     threads: parseInt($('stThreads').value) || 3
+    /* 拆卷号 / 番外小数号 / 保留旧 XML 都由程序按档位预设，不再从界面传 */
   };
-  const j = await (await fetch('/api/scrape/write', {method:'POST',
-    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
-  if (j.err){ toast(j.err, 3200); return; }
+  let j;
+  try { j = await api('/api/scrape/write', body); }
+  catch (e){
+    /* 请求本身失败（后端在跑别的任务、端口断了）以前是静默 reject，
+       界面上什么都不弹 —— 看着就像「点了应用但没反应」。 */
+    toast('写入请求没发出去：' + ((e && e.message) || e), 4200);
+    return;
+  }
+  if (!j || j.err){ toast((j && j.err) || '写入失败', 3600); return; }
+  SC_WROTE = true;
   subTab('log');
   pollScrape();
 }
@@ -1655,49 +2155,161 @@ async function doScrapeStop(){
   toast('已发出停止指令');
 }
 
-/* 批量：每个未匹配的系列都搜一次、取第一条够像的结果（只填不写） */
-async function doBatchMatch(){
+/* 自动刮削：对**选中的**系列逐个 搜索 → 取最佳 → 拉详情（含每卷 ISBN / 额外 id）→ 直接写入 */
+async function doAutoScrape(){
   if (BATCHING) return;
   const src = curSources();
-  if (!src.length){ toast('至少勾一个元数据来源'); return; }
+  if (!src.length){ toast('至少勾一个数据库'); return; }
   if (!SERIES.length){ toast('先扫描目录'); return; }
+
+  const dirs = [...MULTI];
+  const targets = SERIES.filter(s => dirs.indexOf(s.dir) >= 0);
+  if (!targets.length){ toast('先选系列：点一个，Ctrl 加选，Shift 选一段'); return; }
+
   confirmBar({
-    text: '将对 ' + SERIES.length + ' 个系列逐个搜索，取匹配度最高的一条（低于 60% 的跳过），只填不写。',
-    ok: '开始匹配',
-    run: async () => {
-      BATCHING = true;
-      let hit = 0;
-      for (let i = 0; i < SERIES.length; i++){
-        const s = SERIES[i];
-        $('seriesHint').textContent = '匹配中 ' + (i + 1) + '/' + SERIES.length;
-        try{
-          const r = await (await fetch('/api/scrape/search', {method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({term: cleanTerm(s.name), sources: src})})).json();
-          const c = (r.candidates || [])[0];
-          if (c && c.score >= 0.6){
-            const d = await (await fetch('/api/scrape/fetch', {method:'POST',
-              headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({source: c.source, id: c.id, term: cleanTerm(s.name),
-                sources: src, fillMissing: $('stFill').checked})})).json();
-            if (d.meta){
-              const m = blankMeta();
-              if (s.hasMeta && s.existing) mergeMeta(m, s.existing);
-              mergeMeta(m, d.meta);
-              inferMeta(m);
-              APPLIED[s.dir] = m;
-              hit++;
-            }
-          }
-        }catch(e){}
-        if (i % 3 === 0) renderSeries();
-      }
-      renderSeries();
-      $('seriesHint').textContent = SERIES.length + ' 个系列 · 已匹配 ' + hit;
-      BATCHING = false;
-      toast('批量匹配完成：' + hit + '/' + SERIES.length);
-    }
+    text: '将对选中的 ' + targets.length + ' 个系列逐个搜索，取匹配度最高的一条（低于 60% 跳过）'
+        + '并**直接写入**文件' + ($('stBackup').checked ? '，写前存 .bak。' : '，未开备份。'),
+    ok: '刮削并写入 ' + targets.length + ' 个',
+    run: () => runAutoScrape(targets, src)
   });
+}
+
+async function runAutoScrape(targets, src){
+  BATCHING = true;
+  subTab('log');
+  const jobs = [];
+  let hit = 0, miss = 0;
+
+  for (let i = 0; i < targets.length; i++){
+    const s = targets[i];
+    $('seriesHint').textContent = '自动刮削 ' + (i + 1) + '/' + targets.length;
+    try{
+      const r = await api('/api/scrape/search', {term: cleanTerm(s.name), sources: src});
+      const c = (r.candidates || [])[0];
+      if (!c || c.score < 0.6){ miss++; continue; }
+
+      const d = await api('/api/scrape/fetch', {
+        source: c.source, id: c.id, term: cleanTerm(s.name), sources: src,
+        fillMissing: $('stFill').checked,
+        volumes: !!(s.files.length > 1 && c.source === 'bangumi')
+      });
+      if (!d.meta){ miss++; continue; }
+
+      const m = blankMeta();
+      if (s.hasMeta && s.existing) mergeMeta(m, s.existing);
+      mergeMeta(m, d.meta);
+      inferMeta(m);
+      const vi = applyVolumeIsbns(s, d.volumes);
+      if (vi.single) m.gtin = vi.single;
+
+      APPLIED[s.dir] = m;
+      jobs.push(buildJob(s, m, null));
+      hit++;
+    }catch(e){ miss++; }
+    if (i % 2 === 0) renderSeries();
+  }
+
+  renderSeries();
+  $('seriesHint').textContent = SERIES.length + ' 个系列 · 自动刮削 ' + hit + ' 个';
+  BATCHING = false;
+
+  if (!jobs.length){ toast('没有匹配到可写入的系列（' + miss + ' 个跳过）', 3200); return; }
+  toast('已匹配 ' + hit + ' 个，开始写入…', 2200);
+  await writeJobs(jobs);
+}
+
+/* 每卷 ISBN：按卷号发到每一本；番外与正传同卷号，跳过它们。
+   返回 {n: 填了几本, single: 单本系列该写进系列字段的那条} */
+function applyVolumeIsbns(s, vols){
+  const res = {n: 0, single: '', links: 0};
+  if (!s || !vols || !vols.length) return res;
+  /* 每卷一条：ISBN 和「这一册自己的条目页」一起落到对应那本上。
+     链接是单册页的「单册链接」—— 以前只发书号，单册页永远是空的。 */
+  const map = {};
+  vols.forEach(v => {
+    const k = String(parseInt(v.volume) || 0);
+    if (!map[k]) map[k] = {};
+    if (v.gtin) map[k].gtin = v.gtin;
+    if (v.url) map[k].url = v.url;
+  });
+  s.files.forEach(f => {
+    if (isSpecialFile(f)) return;     // 番外与正传同卷号，不能借用正传的书号和链接
+    const k = String(parseInt(f.volume) || 0);
+    const hit = map[k];
+    if (!hit) return;
+    if (hit.gtin){ f.gtin = hit.gtin; res.n++; }
+    if (hit.url && !f.web){ f.web = hit.url; res.links++; }
+  });
+  if (s.files.length === 1 && res.n) res.single = s.files[0].gtin;
+  return res;
+}
+
+/* ---------- 获取额外数据库 id ---------- */
+/* 只有已经刮过、并且拿到了原名 / 英文名的系列才查得动：
+   中文名在 AniList / MangaBaka 里常常搜不到，原始语言名一搜就中。 */
+function lookupTerms(s){
+  const e = (s && s.existing) || {};
+  const raw = [e.seriesOriginal, e.seriesEnglish, e.seriesChinese, (s && s.name) || ''];
+  const out = [];
+  raw.forEach(function(x){
+    const v = String(x || '').trim();
+    if (v && out.indexOf(v) < 0) out.push(v);
+  });
+  return out;
+}
+
+function canLookup(s){
+  const e = (s && s.existing) || {};
+  return !!(s && s.hasMeta && (e.seriesOriginal || e.seriesEnglish));
+}
+
+/* 只补 id，不重写整份元数据 —— 手改过的字段、其它工具的字段都不动 */
+async function doExternalIds(){
+  if (BATCHING) return;
+  if (!SERIES.length){ toast('先扫描目录'); return; }
+
+  const dirs = [...MULTI];
+  let targets = SERIES.filter(function(s){ return dirs.indexOf(s.dir) >= 0; });
+  if (!targets.length && SERIES[SEL]) targets = [SERIES[SEL]];
+  if (!targets.length){ toast('先选系列：点一个，Ctrl 加选，Shift 选一段'); return; }
+
+  const ready = targets.filter(canLookup);
+  const skip = targets.length - ready.length;
+  if (!ready.length){
+    toast('选中的 ' + targets.length + ' 个系列还没有原名 / 英文名 —— 先刮削一次再来', 4200);
+    return;
+  }
+
+  confirmBar({
+    text: '将对 ' + ready.length + ' 个系列拿原名 / 英文名去 AniList、MAL、MangaBaka 反查 id，'
+        + '只把 id 和备注里的链接补进包内 XML，别的字段一个都不动。'
+        + (skip ? '另有 ' + skip + ' 个没有原名，跳过。' : ''),
+    ok: '开始查 ' + ready.length + ' 个',
+    run: function(){ runExternalIds(ready, skip); }
+  });
+}
+
+async function runExternalIds(targets, skip){
+  BATCHING = true;
+  subTab('log');
+  $('seriesHint').textContent = '查外部 id 0/' + targets.length;
+
+  const items = targets.map(function(s){ return {dir: s.dir, terms: lookupTerms(s)}; });
+  const j = await api('/api/scrape/extraids', {items: items, apply: true, target: SC.target});
+  BATCHING = false;
+
+  if (typeof j.err === 'string' && j.err){ toast(j.err, 4000); return; }
+
+  const ok = j.ok || 0, none = j.none || 0, bad = j.failed || 0;
+  toast('外部 id：写入 ' + ok + ' 个系列'
+      + (none ? '，没找到 ' + none + ' 个' : '')
+      + (bad ? '，失败 ' + bad + ' 个' : '')
+      + (skip ? '，跳过 ' + skip : '')
+      + '（Hardcover / ComicVine / Metron / CBR 要 key，未查）', 5600);
+
+  await doScan(true, true);     // 重新读盘：id 已经写进文件，列表里要能看到
+  if ($('seriesHint').textContent.indexOf('查外部 id') >= 0)
+    $('seriesHint').textContent = SERIES.length + ' 个系列 · 外部 id ' + ok + '/' + targets.length;
 }
 
 /* ---------- 预览 ---------- */
@@ -1713,13 +2325,14 @@ async function previewOne(m, f, isMulti){
     if (f.title) meta.title = f.title; else if (isMulti) meta.title = '';
     if (f.format) meta.format = f.format; else if (isMulti) meta.format = '';
     if (f.gtin) meta.gtin = f.gtin;
+    if (f.web) meta.web = f.web;           // 这一册自己的条目页，覆盖系列链接
+    if (f.summary) meta.summary = f.summary;   // 本册简介，空着才用系列简介
   }
   const pages = f ? f.pages : 0;
-  const j = await (await fetch('/api/scrape/preview', {method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({meta: meta, target: SC.target, splitSuffix: $('stSplit').checked,
-      specialNumber: $('stSpecialNum').checked,
-      pageCount: pages, totalIssues: parseInt(m.count) || 0})})).json();
+  const j = await api('/api/scrape/preview', {meta: meta, target: SC.target,
+    collections: $('stCollections').checked, skipNumber: $('stSkipNum').checked,
+    spVolZero: $('stSpVolZero').checked,
+    pageCount: pages, totalIssues: parseInt(m.count) || 0});
   return j;
 }
 
@@ -1731,39 +2344,103 @@ async function doPreviewMeta(){
 
   const one = currentScope();
   subTab('pre');
-  $('scPre').textContent = '正在渲染…';
+  showPreText('正在渲染…');
 
-  // 分册模式：只看这一本
+  const KEEP = ['Series','SeriesOriginal','SeriesEnglish','Volume','Number','Title',
+                'Format','GTIN','Manga','LanguageISO','PageCount','SeriesGroup','Publisher'];
+
+  /* 分册：一张「字段 / 最终值」的表，加一份原始 XML */
   if (one){
     const j = await previewOne(m, one, s.files.length > 1);
     if (j.err){ toast(j.err, 3000); return; }
-    $('scPre').textContent = '/* ' + one.name + ' */\n' + j.xml
-      + '\n\n/* series.json */\n' + j.seriesJson;
+
+    let h = '<div class="phead">这一册：<b>' + esc(one.name) + '</b>　（左边列的字段就是包内 XML 会变成的值）</div>';
+    h += '<table class="prev"><thead><tr><th style="width:132px">字段</th><th>写入值</th></tr></thead><tbody>';
+    KEEP.forEach(function(t){
+      const v = xmlField(j.xml, t);
+      if (!v && t !== 'Volume') return;     // 空字段不占屏；Volume 空着要显式说「不写」
+      h += '<tr><td style="color:#6B6B6B">' + t + '</td><td class="mono">'
+         + (v ? esc(v) : '<span style="color:#B0B0B0">（不写）</span>') + '</td></tr>';
+    });
+    const web = xmlField(j.xml, 'Web');
+    if (web){
+      h += '<tr><td style="color:#6B6B6B">Web</td><td class="mono">'
+         + web.split(/\s*,\s*|\s+/).filter(Boolean).map(esc).join('<br>') + '</td></tr>';
+    }
+    h += '</tbody></table>';
+    h += '<div class="sub">ComicInfo.xml</div><pre>' + esc(j.xml) + '</pre>';
+    h += '<div class="sub">series.json</div><pre>' + esc(j.seriesJson || '') + '</pre>';
+    showPreHtml(h);
     return;
   }
 
-  // 整组模式：逐本渲染，先给汇总，再给第一本的完整样例
+  /* 整组：每本一行的总览表，再给第一本的完整 XML */
   const isMulti = s.files.length > 1;
-  const lines = [];
+  const rows = [];
   let first = null;
   for (let i = 0; i < s.files.length; i++){
     const f = s.files[i];
     const j = await previewOne(m, f, isMulti);
     if (j.err){ toast(j.err, 3000); return; }
     if (!first) first = j;
-    const keys = j.xml.split('\n').filter(l => KEY_LINE.test(l))
-      .map(l => l.trim()).join('  ');
-    lines.push(f.name + '\n    ' + (keys || '（无）'));
+    const web = xmlField(j.xml, 'Web');
+    rows.push({
+      name: f.name,
+      vol: xmlField(j.xml, 'Volume'),
+      num: xmlField(j.xml, 'Number'),
+      title: xmlField(j.xml, 'Title'),
+      fmt: xmlField(j.xml, 'Format'),
+      gtin: xmlField(j.xml, 'GTIN'),
+      links: web ? web.split(/\s*,\s*|\s+/).filter(Boolean).length : 0
+    });
   }
 
-  $('scPre').textContent =
-    '/* 整组预览：共 ' + s.files.length + ' 本。下面每本的 卷/话/标题/特殊类型/ISBN 各自渲染，'
-    + '其余字段（系列名、作者、分级、阅读方向…）整组共用。 */\n\n'
-    + lines.join('\n\n')
-    + '\n\n/* 第一本的完整 XML（其余各本除上面列出的差异外与此相同） */\n'
-    + (first ? first.xml : '')
-    + '\n\n/* series.json（系列级，每本不重复） */\n'
-    + (first ? first.seriesJson : '');
+  let h = '<div class="phead">整组预览　共 <b>' + s.files.length + '</b> 本　'
+        + '系列字段（书名 / 作者 / 分级 / 简介…）整组共用，下表只列每册会不同的'
+        + '</div>';
+  h += '<table class="prev grid"><thead><tr>'
+     + '<th style="width:30px">#</th><th style="width:44px">卷</th><th style="width:44px">话</th>'
+     + '<th>标题</th><th style="width:76px">格式</th><th style="width:116px">ISBN</th>'
+     + '<th style="width:50px">链接</th></tr></thead><tbody>';
+  rows.forEach(function(r, i){
+    h += '<tr>'
+       + '<td style="color:#8C8C8C">' + (i + 1) + '</td>'
+       + '<td>' + (r.vol || '<span style="color:#C0C0C0">—</span>') + '</td>'
+       + '<td>' + (r.num || '<span style="color:#C0C0C0">—</span>') + '</td>'
+       + '<td class="mono ell" title="' + esc(r.title) + '">'
+       + (r.title ? esc(r.title) : '<span style="color:#C8C8C8">—</span>') + '</td>'
+       + '<td>' + (r.fmt === 'Special' ? '<span class="pill">番外</span>' : esc(r.fmt || '')) + '</td>'
+       + '<td class="mono">' + (r.gtin || '<span style="color:#C0C0C0">—</span>') + '</td>'
+       + '<td style="color:#8C8C8C">' + (r.links || 0) + '</td></tr>';
+  });
+  h += '</tbody></table>';
+  h += '<div class="sub">第一本的完整 XML（其余各本除上表列出的差异外相同）</div>';
+  h += '<pre>' + esc(first ? first.xml : '') + '</pre>';
+  h += '<div class="sub">series.json（系列级，每本不重复）</div>';
+  h += '<pre>' + esc(first ? (first.seriesJson || '') : '') + '</pre>';
+  showPreHtml(h);
+}
+
+function showPreHtml(h){
+  const box = $('scPre');
+  if (!box) return;
+  box.classList.add('html');
+  box.innerHTML = h;
+  box.scrollTop = 0;
+}
+
+function showPreText(t){
+  const box = $('scPre');
+  if (!box) return;
+  box.classList.remove('html');
+  box.textContent = t;
+  box.scrollTop = 0;
+}
+
+/* 从渲染出来的 ComicInfo.xml 里取一个标签值（预览里的就是最终写入值） */
+function xmlField(xml, tag){
+  const m = new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>').exec(xml || '');
+  return m ? m[1].trim() : '';
 }
 
 function subTab(which){
@@ -1775,6 +2452,8 @@ function subTab(which){
 }
 
 /* ---------- 刮削进度 ---------- */
+let SC_WROTE = false;      /* 这一轮写入过：跑完要重扫一次，让列表与分册跟上盘上的实际情况 */
+
 async function pollScrape(){
   if (PAGE !== 'scrape') return;
   try{
@@ -1787,10 +2466,18 @@ async function pollScrape(){
     $('btnScStop').disabled = !j.running;
     /* 跑着的时候写入按钮全禁用；停下来再按「单册 / 整组」互斥规则还原 */
     const busy = !!j.running;
-    ['btnApplyOne', 'btnWriteGroup', 'btnBatch'].forEach(function(id){
+    ['btnApplyOne', 'btnWriteGroup', 'btnAuto', 'btnSelAll'].forEach(function(id){
       const e = $(id); if (e) e.disabled = busy;
     });
     if (!busy) syncWriteButtons();
+
+    /* 写入完成后自动重扫：写完的元数据、改过的文件都要反映到系列列表上，
+       以前得手动再点一次「扫描」才看得到 */
+    if (!busy && SC_WROTE && !BATCHING){
+      SC_WROTE = false;
+      await doScan(true, true);
+      toast('写入完成，列表已同步', 1800);
+    }
     report({phase: j.phase || '待命',
       count: '完成 ' + (j.done||0) + '/' + (j.total||0),
       current: j.current || ''});
@@ -1819,7 +2506,6 @@ function toast(msg, ms){
 /* 内联确认条：不可逆操作在页面底部就地确认，文案与动作都留在页面里；
    宿主那边只负责「清缓存 / 恢复默认」这两个真正的整理动作（见 MainWindow.OnWebMessage）。 */
 const CONFIRMS = {
-  'clear-cache': { text:'清除阅读方向缓存后，下次判断阅读方向需要重新联网查证。', ok:'确认清除' },
   'reset-config': { text:'将把界面设置恢复为默认值（源目录、输出目录不受影响），并立即生效。', ok:'恢复默认' }
 };
 let confirmId = null, confirmRun = null;
@@ -1857,8 +2543,8 @@ $('confirmOk').addEventListener('click', () => {
 document.addEventListener('change', e => {
   if (e.target.name === 'target'){ setTargetHint(); saveCfg(); return; }
   if (e.target.name === 'starget'){ applyScrapeTarget(e.target.value); saveCfg(); return; }
-  if (e.target.name === 'reading') setReadHint();
-  if (e.target.closest && e.target.closest('#srcPick')){ saveCfg(); report(); return; }
+  if (e.target.id === 'stSkipNum' || e.target.id === 'stSpVolZero'){ syncPerFileFields(); saveCfg(); return; }
+  if (e.target.closest && e.target.closest('#srcPick')){ syncDbChips(); saveCfg(); report(); return; }
   if (e.target.closest && e.target.closest('.form')){ META = readForm(); saveCfg(); return; }
   saveCfg();
 });
@@ -1902,16 +2588,12 @@ window.UI = {
   stop(){ PAGE === 'scrape' ? doScrapeStop() : doStop(); },
   scan(){ doScan(); },
   search(){ doSearch(); },
-  batch(){ doBatchMatch(); },
+  batch(){ doAutoScrape(); },
   writeGroup(){ writeGroup(); },
   clearPreview(){ clearPreview(); },
   openSelected(){ openSelected(); },
   editTab(w){ editTab(w); },
   setMode(m){ setMode(m); },
-  setReading(v){
-    const e = document.querySelector('input[name=reading][value="' + v + '"]');
-    if (e){ e.checked = true; setReadHint(); saveCfg(); }
-  },
   setTarget(v){
     const e = document.querySelector('input[name=target][value="' + v + '"]');
     if (e){ e.checked = true; setTargetHint(); saveCfg(); }
@@ -1923,7 +2605,7 @@ window.UI = {
   clearPreview(){
     $('prevBox').innerHTML = '<div class="empty">点「预演」查看命名结果</div>';
     $('prevCount').textContent = '';
-    $('scPre').textContent = '点「生成预览」看将要写进包里的 ComicInfo.xml';
+    showPreText('点「生成预览」看将要写进包里的 ComicInfo.xml');
   },
   reload(){ booting = true; loadCfg().then(() => { report(); }); },
   report(){ report(); },
