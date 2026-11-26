@@ -764,7 +764,7 @@ box-shadow:0 8px 24px rgba(0,0,0,.14);opacity:0;transition:.16s}
             <button onclick="restoreOriginal()" id="btnRestore"
                     title="把「留档原 XML」里刮削之前的元数据填回表单（只改表单，不写盘）">元数据回退</button>
             <button class="grow" onclick="applySeries(true)" id="btnApplyOne"
-                    title="只把这一本写进文件（先在分册选一个 V01 / SP01）">仅应用本册</button>
+                    title="只把这一本写进文件（先在分册选一个 V01 / SP01；快捷键 Ctrl+S）。写完留在本册编辑页，不重扫列表">仅应用本册</button>
             <button class="grow primary" onclick="writeGroup()" id="btnWriteGroup"
                     title="把这一系列所有册（含各册单独改过的号 / 标题 / 书号 / 链接）一起写进文件">应用全部</button>
           </div>
@@ -1508,7 +1508,7 @@ function renderChips(){
   const s = SERIES[SEL];
   if (!s){ $('fileChips').innerHTML = ''; $('fileHint').textContent = ''; return; }
 
-  let h = '<span class="chip' + (FILE < 0 ? ' on' : '') + '" onclick="selectFile(-1)">整册</span>';
+  let h = '<span class="chip' + (FILE < 0 ? ' on' : '') + '" tabindex="0" onclick="selectFile(-1)">整册</span>';
   s.files.forEach((f, i) => {
     // 册号由后端统一发（正传 V01、番外 SP01），chips 和重命名用的是同一个号，
     // 不然界面显示 v1、文件却叫 V01，对不上。
@@ -1518,7 +1518,7 @@ function renderChips(){
       : (f.label || (isSpecialFile(f)
         ? 'SP' + (f.volume || '')
         : (f.volume ? 'V' + f.volume : 'V' + f.number)));
-    h += '<span class="chip' + (FILE === i ? ' on' : '') + '" title="' + esc(f.name) + '"'
+    h += '<span class="chip' + (FILE === i ? ' on' : '') + '" tabindex="0" title="' + esc(f.name) + '"'
        + ' onclick="selectFile(' + i + ')">' + esc(tag) + '</span>';
   });
   $('fileChips').innerHTML = h;
@@ -2080,7 +2080,7 @@ async function applySeries(andWrite){
   const f0 = s.files[idx];
   /* 报一下实际写下去的卷/话：「我以为清了」和「真的清了」差别就在这一句里 */
   toast('已应用 ' + f0.name + '（卷 ' + (f0.volume || '空') + ' / 话 ' + (f0.number || '空') + '）', 2600);
-  if (andWrite) await writeJobs([buildJob(s, m, idx)]);
+  if (andWrite) await writeJobs([buildJob(s, m, idx)], true);
 }
 
 /* 应用全部：把这一系列每一册自己的号 / 标题 / 书号 / 链接一起写下去。
@@ -2121,7 +2121,7 @@ async function writeAll(){
   });
 }
 
-async function writeJobs(jobs){
+async function writeJobs(jobs, single){
   const body = {
     jobs: jobs,
     target: SC.target,
@@ -2145,8 +2145,11 @@ async function writeJobs(jobs){
     return;
   }
   if (!j || j.err){ toast((j && j.err) || '写入失败', 3600); return; }
-  SC_WROTE = true;
-  subTab('log');
+  /* 仅应用本册：模型里已经是刚发下去的值（readForm 顺手写回 s.files），
+     没必要为了这一本重扫整个列表，更不能把人从单册编辑页甩回系列页 ——
+     标记交给 pollScrape：写完只报一声。 */
+  if (single){ SC_SINGLE = true; }
+  else { SC_WROTE = true; subTab('log'); }
   pollScrape();
 }
 
@@ -2453,6 +2456,7 @@ function subTab(which){
 
 /* ---------- 刮削进度 ---------- */
 let SC_WROTE = false;      /* 这一轮写入过：跑完要重扫一次，让列表与分册跟上盘上的实际情况 */
+let SC_SINGLE = false;     /* 仅应用本册：写完不重扫、不切页，只报一声 */
 
 async function pollScrape(){
   if (PAGE !== 'scrape') return;
@@ -2477,6 +2481,12 @@ async function pollScrape(){
       SC_WROTE = false;
       await doScan(true, true);
       toast('写入完成，列表已同步', 1800);
+    }
+    /* 仅应用本册：只动了包内一个 XML，本地模型已经是最新的，
+       不重扫（重扫会把 FILE 归零、人被甩回系列页），日志里已有逐本结果 */
+    if (!busy && SC_SINGLE && !BATCHING){
+      SC_SINGLE = false;
+      toast('本册已写入', 1800);
     }
     report({phase: j.phase || '待命',
       count: '完成 ' + (j.done||0) + '/' + (j.total||0),
@@ -2558,10 +2568,111 @@ document.querySelectorAll('#out,#tpl,#jobs,#limit,#stThreads,#stRenTpl,#term').f
 document.querySelectorAll('.form input,.form textarea').forEach(el =>
   el.addEventListener('input', () => { META = readForm(); }));
 
+/* ---------- 键盘导航 ----------
+   Tab：焦点在哪个「大框」（系列信息 / 单册）里就只在框内的输入项之间循环，
+   不跳到框外 —— 想换框用鼠标点一下目标框里的任意输入项，Tab 就在新框里转。
+   方向键：分册的册号 chip（整册 / V01 / SP01…）可用上下左右挑选、回车确认，
+   不用再在两排小 chip 里找鼠标落点。 */
+const TAB_BOXES = ['paneSeries', 'paneFile'];
+function tabBoxFor(el){
+  if (!el || el === document.body) return null;
+  for (let i = 0; i < TAB_BOXES.length; i++){
+    const p = $(TAB_BOXES[i]);
+    if (p && p.contains(el)) return p;
+  }
+  return null;
+}
+function cycleTab(root, back){
+  const els = [...root.querySelectorAll('input,select,textarea')].filter(el =>
+    !el.disabled && el.offsetParent !== null && el.type !== 'hidden');
+  if (!els.length) return;
+  let next = els.indexOf(document.activeElement);
+  if (next < 0) next = back ? els.length - 1 : 0;
+  else {
+    next += back ? -1 : 1;
+    if (next < 0) next = els.length - 1;           // 框内循环，不出框
+    if (next >= els.length) next = 0;
+  }
+  els[next].focus();
+}
+
+/* 方向键移动分册选择：dx=±1 左右挪，dy=±1 上下按行跳（横向最近）。
+   焦点若在某个 chip 上，跟着落到新 chip；否则不抢焦点（纯切换选择）。 */
+function moveFileSel(dx, dy){
+  const box = $('fileChips');
+  const chips = [...box.querySelectorAll('.chip')];
+  if (!chips.length) return;
+  const cur = FILE + 1;                            // chip 序号（0 = 整册）
+  const rows = [];
+  chips.forEach(c => { const t = c.offsetTop; if (!rows.length || rows[rows.length - 1] !== t) rows.push(t); });
+  const rowOf = i => rows.indexOf(chips[i].offsetTop);
+
+  let to = cur;
+  if (dx) to = Math.max(0, Math.min(chips.length - 1, cur + dx));
+  else if (dy){
+    const r = rowOf(cur), x = chips[cur].offsetLeft;
+    let best = -1, bestD = 1e9;
+    for (let i = 0; i < chips.length; i++){
+      if (rowOf(i) !== r + dy) continue;
+      const d = Math.abs(chips[i].offsetLeft - x);
+      if (d < bestD){ bestD = d; best = i; }
+    }
+    to = best >= 0 ? best : cur;                   // 首行往上 / 末行往下：原地不动
+  }
+  if (to === cur) return;
+  selectFile(to === 0 ? -1 : to - 1);
+  /* selectFile 会重建 chips；焦点本来就在 chip 上时跟到新 chip，方向键能连续按 */
+  requestAnimationFrame(() => {
+    if (document.activeElement && document.activeElement.classList.contains('chip')){
+      const nc = box.querySelectorAll('.chip')[to];
+      if (nc) nc.focus();
+    }
+  });
+}
+
+/* chip 上按方向键 / 回车：复用 moveFileSel，回车 / 空格等于点一下 */
+$('fileChips').addEventListener('keydown', function(e){
+  const chips = [...this.querySelectorAll('.chip')];
+  const cur = chips.indexOf(document.activeElement);
+  if (cur < 0) return;
+
+  if (e.key === 'Enter' || e.key === ' '){
+    e.preventDefault();
+    selectFile(cur === 0 ? -1 : cur - 1);
+    return;
+  }
+  const dx = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+  const dy = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+  if (!dx && !dy) return;
+  e.preventDefault();
+  moveFileSel(dx, dy);
+});
+
 /* 快捷键：键盘焦点几乎总在 WebView 里，宿主窗口收不到这些键，所以页面自己处理 */
 document.addEventListener('keydown', e => {
   if (e.altKey) return;
   const k = (e.key || '').toLowerCase();
+
+  /* 方向键直接选册：不用先 Tab 聚焦到 chip 区。焦点在输入框 / chip 上时不接管
+     （输入框里方向键移动光标；chip 上由 chip 自己的 keydown 处理）。 */
+  if (PAGE === 'scrape' && !e.ctrlKey && !e.metaKey &&
+      (k === 'arrowleft' || k === 'arrowright' || k === 'arrowup' || k === 'arrowdown')){
+    const t = e.target;
+    const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
+                         t.tagName === 'SELECT' || t.isContentEditable);
+    if (!typing && !(t && t.classList && t.classList.contains('chip'))){
+      moveFileSel(k === 'arrowright' ? 1 : k === 'arrowleft' ? -1 : 0,
+                  k === 'arrowdown' ? 1 : k === 'arrowup' ? -1 : 0);
+      e.preventDefault();
+      return;
+    }
+  }
+
+  /* Tab 在「大框」内循环（见上面键盘导航一节） */
+  if (k === 'tab'){
+    const box = tabBoxFor(e.target);
+    if (box){ e.preventDefault(); cycleTab(box, e.shiftKey); return; }
+  }
 
   if (e.ctrlKey){
     if (e.shiftKey && k === 'o'){ e.preventDefault(); pick('out'); return; }
@@ -2570,6 +2681,9 @@ document.addEventListener('keydown', e => {
     if (!e.shiftKey && k === 'l'){ e.preventDefault(); UI.clearLog(); return; }
     if (!e.shiftKey && k === 'e'){ e.preventDefault();
       if (PAGE === 'scrape') openSelected(); else post({ act: 'open-out' }); return; }
+    if (!e.shiftKey && k === 's'){ e.preventDefault();
+      if (PAGE === 'scrape'){ const b = $('btnApplyOne'); if (b && !b.disabled) applySeries(true); }
+      return; }
     return;
   }
 

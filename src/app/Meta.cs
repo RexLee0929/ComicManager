@@ -159,6 +159,8 @@ namespace ComicManager
         /// 正传有卷 → 只写 Volume，Number 清空（Kavita 排卷只看 Volume，双写没有意义）；
         /// 话（没有卷）→ 只写 Number，不再把话抄成卷号。
         /// 番外的号位归 <see cref="SpecialVolumeZero"/> 管。
+        /// 写入时的明确开关：单册表单里手动填的 Number 同样不落盘（2.1.1 起）；
+        /// WriteCbz 的跳过判定按关闭渲染，磁盘残留的 Number 照样修得掉。
         /// </summary>
         public bool SkipNumber;
 
@@ -359,12 +361,13 @@ namespace ComicManager
             // 5b. Kavita 系 + 「不写 Number」：卷 / 话各写各的，不双写（只管正传）。
             //     正传有卷 → Number 清空（排卷只看 Volume）；正传无卷有话 → Number 原样写。
             //     番外的号位归 5c 的「番外卷号占 0」开关管。
-            //     同样按 !ManualEdit 走，两个原因：
-            //     ① 手动编辑的册以用户填的值为准（和第 3/4/5 步同一原则）；
-            //     ② WriteCbz 的「跳过判定」会用 ManualEdit=true 严格渲染磁盘旧值 ——
-            //        若这里对旧值也清 Number，磁盘残留的 Number=5 会被渲染成空，
-            //        新旧渲染一样 → 永远「跳过：元数据未变化」，开关开了也修不掉残留。
-            if (!opt.ManualEdit && opt.SkipNumber && MetaOptions.IsKavitaFamily(opt.Target)
+            //     SkipNumber 是写入时的明确开关，手动编辑的册同样生效 ——
+            //     开关开着，单册表单里填的 Number 也不落盘（「不管填没填值都不写」）。
+            //     WriteCbz 的「跳过判定」用的严格渲染会把 SkipNumber 关掉
+            //     （见 WriteCbz 里 strict 那几行），所以这里对开关无条件生效不会
+            //     修不掉磁盘残留：严格渲染按原值走，磁盘有 Number=5 就渲染 5，
+            //     新值渲染成空 → 有差异 → 照写。
+            if (opt.SkipNumber && MetaOptions.IsKavitaFamily(opt.Target)
                 && !IsSpecial(m) && !string.IsNullOrEmpty(m.Volume))
             {
                 m.Number = "";
@@ -372,7 +375,10 @@ namespace ComicManager
 
             // 5c. 「番外卷号占 0」（独立开关，Custom 档默认开）：覆盖第 5 步的清空 ——
             //     番外 Volume 写 0，Number 按原有顺序照写（Specials 区里靠 Number 排序）。
-            //     跟 SkipNumber 相互独立：只开这一个也生效。!ManualEdit 的理由同 5b。
+            //     跟 SkipNumber 相互独立：只开这一个也生效。
+            //     手动编辑的册仍以手填卷号为准（ManualEdit 门控保留）：
+            //     「不写 Number」清正传的话号是写入时的明确开关才越过手动值，
+            //     番外占 0 不越过 —— 用户特意给番外填的卷号不能被程序吃掉。
             if (!opt.ManualEdit && opt.SpecialVolumeZero && MetaOptions.IsKavitaFamily(opt.Target)
                 && IsSpecial(m))
             {
@@ -1150,6 +1156,11 @@ namespace ComicManager
             var tags = SplitList(m.Tags);
             if (tags.Count > 0) o["tags"] = tags;
 
+            // 合集 / 书单：沿用 ComicInfo 的字段名 SeriesGroup，逗号 / 顿号拆成数组
+            //（与 genres / tags 同风格；空值不写）
+            var groups = SplitList(m.SeriesGroup);
+            if (groups.Count > 0) o["seriesGroup"] = groups;
+
             var people = People(m);
             if (people.Count > 0) o["people"] = people;
 
@@ -1389,6 +1400,11 @@ namespace ComicManager
                         var strict = opt.Meta.Clone();
                         strict.FillMissingNumbers = false;
                         strict.ManualEdit = true;
+                        // 「不写 Number」这类写入时的明确开关也要关：
+                        // 它对新值无条件生效（手动编辑的册也清），若严格渲染也清，
+                        // 磁盘残留的 Number=5 会被渲染成空，和新值一样 → 永远「跳过」。
+                        // 严格渲染要的是磁盘原值，开关一律按关闭渲染。
+                        strict.SkipNumber = false;
                         var oldXml = ComicInfo.Render(old, strict);
                         if (oldXml == xml && ComicInfo.SameWebText(oldRaw, xml))
                         {

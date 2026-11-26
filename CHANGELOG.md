@@ -4,6 +4,23 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.1] - 2026-11-26
+
+### 新增
+
+- **刮削页 `Ctrl+S`**：等同于「仅应用本册」，直接写入当前选中的分册；按钮悬浮提示同步写明快捷键
+- **刮削页键盘导航**：方向键在分册之间切换（焦点在输入框里时仍用于移动光标），`Tab` / `Shift+Tab` 在「系列信息 / 单册」当前框内循环，回车或空格选中分册
+- **`series.json` 带合集**（Kavita Custom 档）：「生成收藏」里的合集 / 书单写成 `seriesGroup` 数组，Kavita Custom 可直接按侧车建合集；空值不写
+
+### 变更
+
+- **「不写 Number」对手动编辑的册也生效**：Kavita 系档位开着该开关时，正传即使手填了话号，只要有卷号就不落盘；番外手填的卷号仍以手动值为准
+- **「仅应用本册」写完不再重扫列表**：原来会切到日志页并重扫整个列表、把人送回系列页；现在留在当前单册编辑页，只提示「本册已写入」
+
+### 修复
+
+- 磁盘上残留的 `Number` 不再被误判为「元数据未变化」：跳过判定改为按磁盘原值严格渲染，残留话号可以照常清掉
+
 ## [2.1.0] - 2026-11-25
 
 ### 新增
@@ -172,6 +189,7 @@
 - **断点续跑**：目标已存在记「跳过」，默认 6 并发（可 1–32）
 - **安装 / 卸载向导**：可选「仅为我安装」（无需管理员）或「为所有用户安装」（请求一次 UAC）
 
+[2.1.1]: https://github.com/RexLee0929/ComicManager/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/RexLee0929/ComicManager/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/RexLee0929/ComicManager/compare/v1.0.7...v2.0.0
 [1.0.7]: https://github.com/RexLee0929/ComicManager/compare/v1.0.6...v1.0.7

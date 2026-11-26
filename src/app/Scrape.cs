@@ -658,6 +658,9 @@ namespace ComicManager
                         // 只有用户亲手改过的册才完全按「发的值就是最终值」处理：
                         // 缺号互补、番外清卷号全关。纯刮削写入的册仍走档位规则
                         //（番外照样不挂卷号，不能因为改成 7 段协议就把这条丢了）。
+                        // 例外：「不写 Number」是写入时的明确开关，对手动册同样生效
+                        //（Normalize 5b 不受 ManualEdit 门控）—— 开关开着，
+                        // 表单里填的 Number 也不落盘。
                         if (job.ManualFiles.Contains(f.Key))
                         {
                             oneOpt.Meta.FillMissingNumbers = false;
